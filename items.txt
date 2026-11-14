@@ -1,0 +1,33 @@
+# Known reward names, one per line. Used only when the banner icon isn't
+# recognised: OCR text close to one of these is logged with this spelling.
+# Names not listed are still logged, as read. When an icon is recognised, the
+# name comes from the image file in assets\ instead (rename the file to fix it).
+
+# Gizmo banners say "Sprite Gizmo"; the icon decides which gizmo.
+Sprite Gizmo
+Extraction Accelerator
+Golden Firework
+Lucky Locator
+Portable Extractor
+Sprite Locator
+
+# Every week
+Pirate Shop Access
+Pirate Token
+
+# Week 1 (A$AP Rocky)
+Solid Gold A$AP Rocky
+Solid Gold A$AP Rocky's Gauntlets
+Mercedes-AMG G 63 G-Wagon
+Gold G-Wagon
+No Trespassing
+Plunder in Paradise
+
+# Week 2 (Lil Uzi Vert)
+Solid Gold Lil Uzi Vert
+Lil' Uzi Crew
+Gold Cadillac CT5-V Blackwing
+London
+So Kawaii
+
+# Weeks 3-5 rewards were not announced yet (as of Nov 13, 2026); add them here.

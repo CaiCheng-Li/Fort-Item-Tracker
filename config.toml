@@ -1,0 +1,50 @@
+# Fort Item Tracker settings. Delete a line to use its default.
+
+[capture]
+poll_hz = 4                       # screen checks per second while Fortnite is focused
+backend = "auto"                  # "auto" (dxcam, falls back to mss), "dxcam" or "mss"
+only_when_focused = false         # true: pause while Fortnite isn't the active window
+# Banner search area as fractions of the game window: left, top, right, bottom.
+roi = [0.25, 0.08, 0.75, 0.50]
+
+[detect]
+gate_threshold = 0.005            # share of gold-yellow pixels needed before OCR runs (see README)
+gate_hue = [22, 34]               # gold-yellow hue range, OpenCV 0-180 scale
+ocr_language = "en"               # Windows OCR language, match your game language
+anchor = "YOU FOUND"              # banner text above the item name, in your game language
+banner_gap_s = 1.0                # banner counts as gone after this long without a sighting
+snap_score = 80                   # 0-100: how close OCR text must be to snap to a name in items.txt
+
+[icons]
+# Rewards are named by the icon on the banner, matched against the images in icon_folder.
+# Name each image after the item (underscores, dashes, "Item" and "Fortnite" in the file
+# name are ignored: Lucky_Locator_-_Item_-_Fortnite.webp = Lucky Locator).
+icon_folder = "assets"
+learn_icons = true                 # save icons of unrecognised rewards to icon_folder/learned
+generic_names = ["Sprite Gizmo"]   # banner texts shared by several items; an unrecognised icon
+                                   # with this text is saved as "Unknown Sprite Gizmo 1" etc.
+
+[session]
+process_names = ["FortniteClient-Win64-Shipping.exe"]
+end_grace_s = 10                  # seconds Fortnite must stay closed before the session ends
+
+[output]
+folder = "logs"
+
+[hotkey]
+# Works anywhere, including in game. Modifiers: ctrl, alt, shift, win; key: A-Z, 0-9 or F1-F24.
+reset = "ctrl+shift+r"            # timer and counts back to zero (saves and ends the session,
+                                  # starts a new one); "" turns it off
+
+[overlay]
+# Always-on-top timer over the game (click-through, never takes focus). Starts as the session
+# timer; after the first find it also shows time since the last item and one row per item found:
+# icon, count (x3) and the time of the latest find.
+# Turn it on here, or for one run with: tracker.py --overlay
+enabled = false
+x = 16                            # offset from the game window's top-left corner, in pixels
+y = 16
+scale = 1.0                       # 1.5 = 50% bigger
+opacity = 0.85                    # panel background, 0.2-1.0
+items = 5                         # how many different items to list (0 = timers only)
+show_names = false                # also write the item name next to each icon

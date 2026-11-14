@@ -1,0 +1,14 @@
+dxcam==0.3.0
+mss==10.2.0
+numpy==2.5.4
+opencv-python-headless==5.0.0.93
+pillow==13.0.0
+psutil==7.2.2
+RapidFuzz==3.14.6
+winrt-runtime==4.1.0
+winrt-Windows.Foundation==4!10.0.28000.2957
+winrt-Windows.Foundation.Collections==4!10.0.28000.2957
+winrt-Windows.Globalization==4!10.0.28000.2957
+winrt-Windows.Graphics.Imaging==4!10.0.28000.2957
+winrt-Windows.Media.Ocr==4!10.0.28000.2957
+winrt-Windows.Storage.Streams==4!10.0.28000.2957
