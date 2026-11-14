@@ -34,6 +34,7 @@ Right-click the tray icon for the menu:
 | Start with Windows | Starts the tracker when you sign in |
 | Activity log | What the old console window showed: sessions, finds, problems, colour-coded, under the live session timer. Also a double-click on the icon |
 | Test screenshots... | Runs detection on banner screenshots (see Checking and tuning) |
+| Save a problem report | Puts a zip on your desktop to send to whoever helps you (see If something looks wrong) |
 | Open logs folder, Open icons folder, Edit settings, Edit item names | Shortcuts to the files below |
 | Restart | Restarts the tracker so settings changes apply; the session carries on |
 
@@ -42,7 +43,8 @@ happens, in gold:
 
 ```
 Session 20261113-201503 started 2026-11-13 8:15:03 PM
-   8:16:01 PM  +00:00:58  Extraction Accelerator (banner: Sprite Gizmo)
+Watching Fortnite at 2560x1440, full screen, on DISPLAY1 (2560x1440, 100% scaling, HDR off). Window capture is working.
+   8:16:01 PM  +00:00:58  Extraction Accelerator (banner: Sprite Gizmo, icon 0.88)
    8:31:44 PM  +00:16:41  Solid Gold Lil Uzi Vert  [new icon saved: Solid Gold Lil Uzi Vert.png]
 ```
 
@@ -56,6 +58,24 @@ current session is saved and ended, and a new one starts at 00:00:00. The old on
 and `sessions.csv` and can be continued from Resume a saved session. Change or turn off the hotkey
 under `[hotkey]` in `config.toml`; if another program already uses the combination, the activity log
 says so and the menu item still works.
+
+## If something looks wrong
+
+1. **Check it sees the game.** Open the Activity log (double-click the tray icon). Soon after Fortnite
+   starts it shows a line like `Watching Fortnite at 2560x1440, full screen, on DISPLAY1 (...). Window
+   capture is working.` No such line means the tracker can't see the game yet.
+2. **Read the warnings.** Problems show up as yellow `Warning:` lines that say what to change. The
+   usual one: window capture shows black while the game is on screen, so the tracker captures the
+   screen instead (it then misses banners while a window covers the game) and tries the window again
+   later. Playing in **Windowed Fullscreen** (Window Mode in Fortnite's video settings) usually fixes it.
+3. **Check the names.** Each find shows how well the icon matched: `Extraction Accelerator (banner:
+   Sprite Gizmo, icon 0.88)`. A gizmo whose icon it can't place is logged as `Sprite Gizmo (icon unsure,
+   closest: Portable Extractor 0.55)`, in yellow, instead of a guess. Every find's item card is saved in
+   `logs\cards\`, so you can see what it was.
+4. **Send a report.** Still wrong? Pick **Save a problem report** in the tray menu. It saves a zip to your
+   desktop with the activity log, `loot.csv`, settings, learned icons, the last few sessions' item cards
+   and a description of your displays (size, scaling, HDR) and graphics card. It holds no full
+   screenshots, and your Windows user folder is written as `%USERPROFILE%`. Send that file.
 
 ## Overlay
 
@@ -131,7 +151,7 @@ window itself, also while another window covers it. It pauses while Fortnite is 
 
 ## What gets logged
 
-Both files are in `logs\` and open in Excel (saved sessions are in `logs\sessions\`, see above;
+The CSV files are in `logs\` and open in Excel (saved sessions are in `logs\sessions\`, see above;
 the activity log is `logs\tracker.log`).
 
 - `loot.csv`: one row per banner, with `session_id, found_at, session_time, item, banner_text, ocr_text,
@@ -142,6 +162,9 @@ the activity log is `logs\tracker.log`).
 - `sessions.csv`: one row per session, with start, end, duration (master timer), item count and a
   summary such as `Lucky Locator x3; Extraction Accelerator x1`. A resumed session's row is updated
   in place.
+- `cards\<session id>\`: the middle of each find's item card as a PNG named by time and item, e.g.
+  `201601 Extraction Accelerator.png`, to check a name later. It is cut the same way as a learned icon,
+  so copying one into `assets\learned\` (named after the item) teaches the tracker that icon.
 
 If the columns change in an update, the old `loot.csv` is renamed to `loot_old_<number>.csv` and kept.
 
@@ -155,10 +178,17 @@ If the columns change in an update, the old `loot.csv` is renamed to `loot_old_<
    read and marked `(not in items.txt)`.
 3. **Learning.** When a reward has no matching image, its icon is saved to `assets\learned\`, named
    after the banner text, and later banners are named by that icon. The activity log shows
-   `[new icon saved: ...]`. A gizmo whose icon isn't known is saved as `Unknown Sprite Gizmo 1.png`
-   (and logged as that) because its banner text doesn't say which one it is: **rename the file** to the
-   real name, and it is used from the next session on. Renaming any image renames that reward in
-   future logs, so it also fixes misspelled names.
+   `[new icon saved: ...]`. A learned icon is cut from your own screen, so it also looks a bit like
+   other items' cards there: in tests a different gizmo scored up to 0.68 against one, the same item
+   0.97 or more. So a learned icon needs 0.85 to count (a shipped image needs 0.6). Renaming any image
+   renames that reward in future logs, so it also fixes misspelled names.
+4. **Shared banner text.** Every gizmo banner says SPRITE GIZMO (`generic_names` in `config.toml`), so
+   a gizmo icon that matches no image is not learned: it is almost always a known gizmo that looks
+   different on your screen, and a learned copy would then be used for the other gizmos too. It is
+   logged as `Sprite Gizmo (icon unsure, closest: Portable Extractor 0.55)`. If a new gizmo comes out,
+   copy its card from `logs\cards\` into `assets\learned\` and name the file after the gizmo.
+   Version 2.1.0 still learned these as `Unknown Sprite Gizmo 1.png` and so on: rename such a file to
+   the gizmo it shows (check `logs\cards\`), or delete it.
 
 `assets\` currently holds the five gizmos and the Pirate Token. The weekly gold cosmetics, Pirate Shop
 Access and the week 3-5 rewards get learned the first time you find them. To add an image yourself,
@@ -186,7 +216,7 @@ Settings are in `config.toml` (Restart from the tray menu after changing them):
 | Setting | When to change it |
 |---|---|
 | `roi` | The banner sits outside the search area (e.g. a different HUD scale). Fractions of the game window. |
-| `source` | `auto` captures the Fortnite window and switches to capturing the screen if the window comes out black. Set `monitor` to always capture the screen. |
+| `source` | `auto` captures the Fortnite window, and the screen while the window comes out black but the screen shows the game. Set `monitor` to always capture the screen. |
 | `gate_threshold` | A test shows a banner screenshot scoring below it: lower it. False OCR runs are cheap, missed banners aren't. |
 | `gate_hue` | A reward banner comes in a colour other than gold. Widen the range, or the pre-check will skip it. |
 | `poll_hz` | Lower to 2 for even less CPU. The banner stays up ~2-3 s, so 2 checks/s still catches it. |
@@ -204,8 +234,11 @@ recording played full screen (`--display 2` picks another monitor).
    card: 4 times a second the banner search area of the newest one is copied out and halved there
    until it is just over 120 px tall, and only that small copy comes back to memory. On Windows 11
    24H2 and later the capture itself is limited to 8 frames a second, and Windows 11 doesn't draw its
-   yellow capture border around the game. If the window comes out black for 15 s, the tracker
-   captures the screen where the game is instead and says so in the activity log.
+   yellow capture border around the game. If the window comes out black for 15 s while Fortnite is in
+   front, the tracker looks at the screen there once: if that is black too (a loading screen, a fade),
+   nothing is wrong. If it shows the game, window capture isn't working, so the tracker captures the
+   screen instead, says so in the activity log, and tries the window again after 1 minute, then 2, 4,
+   8 and every 16 minutes, going back to it as soon as it works.
 2. **Pre-check.** Scale the small copy to 120 px tall and measure the share of bright gold-yellow
    pixels (the banner's frame and item name). Banners score 0.02 or more, normal gameplay around
    0.0005-0.003, and the threshold is 0.005. Gold things in view (an open chest) can pass too, which
@@ -214,8 +247,8 @@ recording played full screen (`--display 2` picks another monitor).
    graphics card, run the built-in Windows OCR, find the line
    that reads "YOU FOUND" (fuzzy, so "VOU FOUND" counts), and take the text below it. The card above
    that line is cut out, scaled to 80 px, and matched against every reference image laid on the card's
-   gold at ten sizes (normalised template matching). A match counts when it scores at least 0.6 and
-   leads the next-best image by 0.08. The real Extraction Accelerator banners score 0.85 with the
+   gold at ten sizes (normalised template matching). A match counts when it scores at least 0.6 (0.85
+   for a learned icon) and leads the next-best image by 0.08. The real Extraction Accelerator banners score 0.85 with the
    runner-up at 0.59. A read takes about 50 ms.
 4. **One event per banner.** Reads are collected while the banner is up; the icon (or, failing that,
    the text) is decided by vote. A banner counts once, and the event is written when it leaves the
@@ -241,15 +274,18 @@ while a banner is on screen. Capture pauses while Fortnite is minimized.
 
 - A gap between back-to-back banners shorter than one check (0.25 s at `poll_hz = 4`) can be missed,
   merging the two into one. Raise `poll_hz` if that happens.
-- When capture falls back to the screen (`source = "monitor"`, or `auto` after the game window came
-  out black), a window covering the middle of the game hides the banner from the tracker.
+- When capture falls back to the screen (`source = "monitor"`, or `auto` while window capture shows
+  black), a window covering the middle of the game hides the banner from the tracker.
+- A gizmo that looks different on your screen than in `assets\` (another resolution, colour setting or
+  capture method) is logged as `Sprite Gizmo (icon unsure)` rather than by name. Its card in
+  `logs\cards\` shows which it was; a problem report helps tune the matching.
 - The overlay can't show over Fortnite in exclusive fullscreen (use Windowed Fullscreen, which the
   tracker needs anyway).
 - On Windows 10, Windows draws a yellow border around the captured window and doesn't let apps turn
   it off.
-- Icon matching was checked on the two real Extraction Accelerator banners and on test banners made
-  by pasting each asset image onto them. Your first real banner of each other gizmo is the true test;
-  if one is misidentified, save a screenshot to `samples\` and test it.
+- Icon matching was checked on two Extraction Accelerator screenshots, and in play on one PC
+  (2560x1440, window capture), where all five gizmos matched at 0.78-0.92. Other setups can score
+  lower; if one is misidentified, save a screenshot to `samples\` and test it.
 - The pre-check is tuned on two gold banners. If other rewards use a different banner
   colour, add a screenshot to `samples\`, test it, and adjust `gate_hue` if it's skipped.
 
@@ -275,13 +311,14 @@ src/
   Theme.cs            colours, shapes and the tray menu's look
   Motion.cs           springs and easing for the animations
   TestMode.cs         screenshot tests
+  Diagnose.cs         the setup line (game size, display, scaling, HDR) and the problem report
   Imaging.cs          image loading (PNG/JPEG/WebP), resizing, HSV
   Config.cs, Toml.cs  config.toml
   Native.cs           Win32 calls
 assets/               reward images the banner icon is matched against
   learned/            icons saved automatically from banners (not in git)
 samples/              your screenshots for testing (not in git)
-logs/                 loot.csv, sessions.csv, saved sessions, tracker.log (not in git)
+logs/                 loot.csv, sessions.csv, saved sessions, item cards, tracker.log (not in git)
 ```
 
 ## License

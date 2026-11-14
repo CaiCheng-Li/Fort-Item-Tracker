@@ -30,7 +30,7 @@ sealed class TrayApp : ApplicationContext
     readonly Hotkeys hotkeys;
     readonly System.Windows.Forms.Timer tick, pulse;
     readonly MenuStyle style = new();
-    readonly ToolStripMenuItem header, saveItem, resetItem, endItem, resumeMenu, overlayItem, pinItem, startupItem, testItem;
+    readonly ToolStripMenuItem header, saveItem, resetItem, endItem, resumeMenu, overlayItem, pinItem, startupItem, testItem, reportItem;
     readonly ToolStripMenuItem[] recent = new ToolStripMenuItem[5];
     readonly Dictionary<string, Bitmap?> menuIcons = [];
     readonly List<IntPtr> pulseHandles = [];
@@ -72,9 +72,11 @@ sealed class TrayApp : ApplicationContext
         startupItem = Item("Start with Windows", ToggleStartup);
         menu.Items.AddRange([overlayItem, pinItem, startupItem, new ToolStripSeparator()]);
         testItem = Item("Test screenshots...", TestScreenshots);
+        reportItem = Item("Save a problem report", SaveReport);
         menu.Items.AddRange([
             Item("Activity log", ShowLog),
             testItem,
+            reportItem,
             Item("Open logs folder", () => OpenFolder(tracker.LogFolder)),
             Item("Open icons folder", () => OpenFolder(Config.Resolve(root, cfg.IconFolder))),
             Item("Edit settings (config.toml)", () => Notepad(cfg.Path)),
@@ -345,6 +347,28 @@ sealed class TrayApp : ApplicationContext
         finally
         {
             testItem.Enabled = true;
+        }
+    }
+
+    async void SaveReport()
+    {
+        reportItem.Enabled = false;
+        try
+        {
+            string status = tracker.Status.Text;
+            string zip = await Task.Run(() => ProblemReport.Save(cfg, root, tracker.LogFolder, status));
+            Activity.Write($"Problem report saved: {zip}. Send that file to whoever is helping you. It holds your logs, " +
+                           "settings, learned icons and item card images, and no screenshots of the game.");
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{zip}\"") { UseShellExecute = true });
+        }
+        catch (Exception e)
+        {
+            Activity.Write($"Couldn't save the problem report: {e.Message}");
+            ShowLog();
+        }
+        finally
+        {
+            reportItem.Enabled = true;
         }
     }
 

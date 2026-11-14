@@ -4,12 +4,19 @@ using System.Text.RegularExpressions;
 
 namespace FortItemTracker;
 
-sealed record IconMatch(string Name, double Score, double RunnerUp)
+/// <summary>Score and RunnerUp are ranking scores: a learned icon's template score minus LearnedPenalty.</summary>
+sealed record IconMatch(string Name, double Score, double RunnerUp, bool Learned = false)
 {
     public const double Accept = 0.6;   // template score needed to trust a match
     public const double Margin = 0.08;  // ...and its lead over the next-best item
+    // A learned icon is cut from the player's own screen, so it also fits other items' cards there: the
+    // same item scores 0.97+, a different gizmo up to 0.68. It needs 0.85 to count like a shipped 0.6.
+    public const double LearnedPenalty = 0.25;
 
     public bool Confident => Score >= Accept && Score - RunnerUp >= Margin;
+
+    /// <summary>The template score itself (0-1), for logs.</summary>
+    public double Raw => Learned ? Score + LearnedPenalty : Score;
 }
 
 /// <summary>
@@ -27,7 +34,7 @@ sealed class IconLibrary
     sealed record Template(int W, int H, float[] Premul, float[] Alpha);  // Premul: B,G,R interleaved, 0-255
 
     public readonly string Folder, LearnedDir;
-    readonly List<(string Name, List<Template[]> Sets)> refs = [];
+    readonly List<(string Name, List<(Template[] Set, bool Learned)> Sets)> refs = [];
     readonly Dictionary<string, string> paths = [];
 
     public IconLibrary(string folder)
@@ -39,16 +46,19 @@ sealed class IconLibrary
 
     public int Count => refs.Count;
 
+    /// <summary>Items with a learned icon (some may also have a shipped one).</summary>
+    public int LearnedCount => refs.Count(r => r.Sets.Any(s => s.Learned));
+
     public void Reload()
     {
         refs.Clear();
         paths.Clear();
         if (Directory.Exists(Folder))
             foreach (var path in Directory.GetFiles(Folder).Order(StringComparer.OrdinalIgnoreCase))
-                Load(path, NameFromFile(path));
+                Load(path, NameFromFile(path), false);
         if (Directory.Exists(LearnedDir))
             foreach (var path in Directory.GetFiles(LearnedDir).Order(StringComparer.OrdinalIgnoreCase))
-                Load(path, Path.GetFileNameWithoutExtension(path));
+                Load(path, Path.GetFileNameWithoutExtension(path), true);
     }
 
     /// <summary>Lucky_Locator_-_Item_-_Fortnite.webp → Lucky Locator; keeps capitals like A$AP.</summary>
@@ -75,7 +85,16 @@ sealed class IconLibrary
         return roi.Crop(R(anchor.Cx - 3 * h), R(anchor.Y0 - 6.5 * h), R(anchor.Cx + 3 * h), R(anchor.Y0 - 0.5 * h));
     }
 
-    void Load(string path, string name)
+    /// <summary>The middle of a banner card, opaque: what a learned icon is made of.</summary>
+    public static Image32 IconCrop(Image32 card)
+    {
+        int h = card.Height, w = card.Width;
+        var inner = card.Crop((int)(w * 0.15), (int)(h * 0.15), (int)(w * 0.85), (int)(h * 0.85));
+        inner.MakeOpaque();
+        return inner;
+    }
+
+    void Load(string path, string name, bool learned)
     {
         if (!ImageTypes.Contains(Path.GetExtension(path).ToLowerInvariant())) return;
         var img = ImageIO.Load(path);
@@ -99,8 +118,8 @@ sealed class IconLibrary
             set[i] = new Template(t.Width, t.Height, premul, alpha);
         }
         int idx = refs.FindIndex(r => r.Name == name);
-        if (idx < 0) refs.Add((name, [set]));
-        else refs[idx].Sets.Add(set);
+        if (idx < 0) refs.Add((name, [(set, learned)]));
+        else refs[idx].Sets.Add((set, learned));
         paths.TryAdd(name, path);
     }
 
@@ -121,17 +140,20 @@ sealed class IconLibrary
             pixels[p * 3 + 2] = card.Px[p * 4 + 2];
         }
         var sums = new Integrals(pixels);
-        var scores = new List<(string Name, double Score)>();
+        var scores = new List<(string Name, double Score, bool Learned)>();
         foreach (var (name, sets) in refs)
         {
-            double best = -1;
-            foreach (var set in sets)
+            (double Score, bool Learned) best = (-1, false);
+            foreach (var (set, learned) in sets)
                 foreach (var t in set)
-                    best = Math.Max(best, Match(pixels, sums, t, gold));
-            scores.Add((name, best));
+                {
+                    double s = Match(pixels, sums, t, gold) - (learned ? IconMatch.LearnedPenalty : 0);
+                    if (s > best.Score) best = (s, learned);
+                }
+            scores.Add((name, best.Score, best.Learned));
         }
         var ranked = scores.OrderByDescending(s => s.Score).ToList();  // stable: ties keep load order
-        return new IconMatch(ranked[0].Name, ranked[0].Score, ranked.Count > 1 ? ranked[1].Score : 0);
+        return new IconMatch(ranked[0].Name, ranked[0].Score, ranked.Count > 1 ? ranked[1].Score : 0, ranked[0].Learned);
     }
 
     static float[] CardGold(Image32 card)
@@ -245,19 +267,9 @@ sealed class IconLibrary
     public string Learn(string name, Image32 card)
     {
         Directory.CreateDirectory(LearnedDir);
-        int h = card.Height, w = card.Width;
-        var inner = card.Crop((int)(w * 0.15), (int)(h * 0.15), (int)(w * 0.85), (int)(h * 0.85));
-        inner.MakeOpaque();
         string path = Path.Combine(LearnedDir, SafeFilename(name) + ".png");
-        ImageIO.SavePng(inner, path);
+        ImageIO.SavePng(IconCrop(card), path);
         Reload();
         return path;
-    }
-
-    public string UnknownName(string label)
-    {
-        int n = 1;
-        while (refs.Any(r => r.Name == $"Unknown {label} {n}")) n++;
-        return $"Unknown {label} {n}";
     }
 }

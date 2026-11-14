@@ -40,10 +40,10 @@ static class TestMode
             else
             {
                 if (read.Icon is { Confident: true } m)
-                    print($"   FOUND: {m.Name}  (icon {m.Score:0.00}, next best {m.RunnerUp:0.00})");
+                    print($"   FOUND: {m.Name}  ({Score(m)}, next best {m.RunnerUp:0.00})");
                 else if (read.Icon is IconMatch u)
                     print(icons.Count == 0 ? "   icon not recognised (no reference images)"
-                        : $"   icon not recognised (best {u.Name} {u.Score:0.00}, next {u.RunnerUp:0.00})");
+                        : $"   icon not recognised (best {u.Name}, {Score(u)}, next {u.RunnerUp:0.00})");
                 if (read.Name == null)
                 {
                     print("   banner text unreadable");
@@ -61,4 +61,6 @@ static class TestMode
         }
         return 0;
     }
+
+    static string Score(IconMatch m) => m.Learned ? $"learned icon {m.Raw:0.00}, counts as {m.Score:0.00}" : $"icon {m.Score:0.00}";
 }

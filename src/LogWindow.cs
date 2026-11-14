@@ -93,8 +93,10 @@ sealed class LogWindow : Form
 
     static int ColorFor(string line)
     {
-        if (FindLine.IsMatch(line) || line.TrimStart().StartsWith("FOUND:")) return 2;
+        if (FindLine.IsMatch(line)) return line.Contains("icon unsure") ? 5 : 2;
+        if (line.TrimStart().StartsWith("FOUND:")) return 2;
         if (line.StartsWith("Session ")) return line.Contains(" started ") || line.Contains(" resumed ") ? 3 : 4;
+        if (line.StartsWith("Warning:")) return 5;
         if (Problem.IsMatch(line)) return 6;
         if (line.StartsWith("config:") || line.Contains("not recognised") || line.StartsWith("Hotkey")) return 5;
         if (line.StartsWith("   ")) return 1;

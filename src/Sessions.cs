@@ -53,7 +53,7 @@ sealed class LootLog
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     static readonly Encoding Utf8 = new UTF8Encoding(false);
 
-    public readonly string Folder, LootCsv, SessionsCsv, SavedDir;
+    public readonly string Folder, LootCsv, SessionsCsv, SavedDir, CardsDir;
 
     public LootLog(string folder)
     {
@@ -61,6 +61,7 @@ sealed class LootLog
         LootCsv = Path.Combine(folder, "loot.csv");
         SessionsCsv = Path.Combine(folder, "sessions.csv");
         SavedDir = Path.Combine(folder, "sessions");
+        CardsDir = Path.Combine(folder, "cards");
         Directory.CreateDirectory(SavedDir);
     }
 
@@ -178,6 +179,22 @@ sealed class LootLog
             ev.Score?.ToString() ?? "", ev.IconScore is double d ? Fmt.Num(d) : "", ev.Reads.ToString(),
         ]);
         Save(s);
+    }
+
+    /// <summary>
+    /// cards\&lt;session id&gt;\&lt;time&gt; &lt;item&gt;.png: the middle of the find's item card, to check a name
+    /// later. It is cut like a learned icon, so copying it into the icons folder's learned\ teaches that icon.
+    /// </summary>
+    public string? SaveCard(Session s, LootEvent ev)
+    {
+        if (ev.Card is not { Width: > 0, Height: > 0 } card) return null;
+        string dir = Path.Combine(CardsDir, s.Id);
+        string stamp = DateTime.UnixEpoch.AddSeconds(ev.WallTime).ToLocalTime().ToString("HHmmss");
+        string path = Path.Combine(dir, $"{stamp} {IconLibrary.SafeFilename(ev.Item)}.png");
+        for (int n = 2; File.Exists(path); n++) path = Path.Combine(dir, $"{stamp} {IconLibrary.SafeFilename(ev.Item)} {n}.png");
+        Directory.CreateDirectory(dir);
+        ImageIO.SavePng(IconLibrary.IconCrop(card), path);
+        return path;
     }
 
     public string EndSession(Session s)

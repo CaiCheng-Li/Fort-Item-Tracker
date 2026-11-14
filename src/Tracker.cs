@@ -41,7 +41,9 @@ sealed class Tracker : IDisposable
     const double AutosaveS = 15;
     const double ProcessCheckS = 2;   // while the game runs (checking a handle, nearly free)
     const double WaitingCheckS = 5;   // while waiting for it (walks the process list)
-    const double WindowCaptureGraceS = 15;  // window capture that shows nothing for this long falls back to the screen
+    const double WindowCaptureGraceS = 15;  // window capture that shows nothing for this long is checked against the screen
+    const double RetryWindowFirstS = 60;    // after falling back to the screen, window capture is tried again this soon,
+    const double RetryWindowMaxS = 960;     // ...then twice as long after each try, up to this
 
     readonly Config cfg;
     readonly string root;
@@ -71,6 +73,9 @@ sealed class Tracker : IDisposable
     double nextAutosave;
     WgcCapture? capture;
     IntPtr windowCaptureFailed;  // window that window capture didn't work for (auto mode then captures its monitor)
+    double retryWindowAt, retryWindowEvery = RetryWindowFirstS;
+    IntPtr reportedFor;      // game window the setup line was written for
+    IntPtr warnedBlank;      // game window the "window capture shows black" warning was written for (source = "window")
     double? blankSince;
     double? lastReadAt;      // when the last captured frame had a banner read on it
     int captureFailures;
@@ -283,7 +288,7 @@ sealed class Tracker : IDisposable
     string? CaptureRoi(out Image32? small)
     {
         small = null;
-        RECT region = default;
+        RECT region = default, onScreen = default;
         bool window = false;
         if (opts.Always)
         {
@@ -297,7 +302,8 @@ sealed class Tracker : IDisposable
             if (Native.IsIconic(hwnd)) return Paused("paused: Fortnite minimized");
             if (cfg.OnlyWhenFocused && Native.GetForegroundWindow() != hwnd) return Paused("paused: Fortnite not focused");
             if (Win.ClientRect(hwnd) is not RECT client) return Paused("no Fortnite window");
-            var r = RoiRect(client, cfg.Roi);
+            var r = onScreen = RoiRect(client, cfg.Roi);
+            if (cfg.Source == "auto" && windowCaptureFailed == hwnd && Clock.Mono >= retryWindowAt && !banners.Busy) RetryWindow(r);
             window = cfg.Source == "window" || (cfg.Source == "auto" && windowCaptureFailed != hwnd);
             if (window)
             {
@@ -330,14 +336,85 @@ sealed class Tracker : IDisposable
             return null;
         }
 
-        if (window && cfg.Source == "auto")
+        bool black = small?.IsBlack() ?? false;
+        if (small != null && !black && !opts.Always && reportedFor != hwnd) ReportSetup(window);
+        if (window)
         {
-            bool blank = small?.IsBlack() ?? Clock.Mono - capture!.LastFrameAt > 5;
+            bool blank = small != null ? black : Clock.Mono - capture!.LastFrameAt > 5;
             if (small != null && !blank) blankSince = null;
             else if (blank && (blankSince ??= Clock.Mono) is double since && Clock.Mono - since > WindowCaptureGraceS)
-                FallBack("the game window shows up black or not at all");
+                CheckBlankWindow(onScreen);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Window capture has shown black (or nothing) for a while. That is only a failure if the screen shows
+    /// the game there: a black screen (loading, a fade) is just black, and window capture stays.
+    /// </summary>
+    void CheckBlankWindow(RECT onScreen)
+    {
+        blankSince = null;  // look again after another grace period
+        if (Native.GetForegroundWindow() != hwnd) return;  // the screen may show another window there
+        var (hmon, _, mr) = Win.MonitorForWindow(hwnd);
+        var region = onScreen.Intersect(mr).Offset(-mr.Left, -mr.Top);
+        if (Probe(() => WgcCapture.ForMonitor(hmon, ProbeInterval, Gate.Height), region) != true) return;
+        if (cfg.Source == "auto")
+        {
+            FallBack("shows black while the game is on screen");
+        }
+        else if (warnedBlank != hwnd)
+        {
+            warnedBlank = hwnd;
+            Activity.Write("Warning: window capture shows black while the game is on screen, so banners can't be seen. " +
+                           $"Set source = \"auto\" under [capture] in config.toml.{FullscreenHint()}");
+        }
+    }
+
+    /// <summary>On the screen fallback: tries window capture again, and goes back to it once it shows the game.</summary>
+    void RetryWindow(RECT onScreen)
+    {
+        retryWindowEvery = Math.Min(retryWindowEvery * 2, RetryWindowMaxS);
+        retryWindowAt = Clock.Mono + retryWindowEvery;
+        if (Win.FrameBounds(hwnd) is not RECT frame) return;
+        var region = onScreen.Offset(-frame.Left, -frame.Top);
+        if (Probe(() => WgcCapture.ForWindow(hwnd, ProbeInterval, Gate.Height), region) != true) return;
+        windowCaptureFailed = IntPtr.Zero;
+        DropCapture();
+        Activity.Write("Window capture works again: capturing the game window, so banners are seen even while a window covers the game.");
+    }
+
+    static readonly TimeSpan ProbeInterval = TimeSpan.FromMilliseconds(30);
+
+    /// <summary>
+    /// One frame of <paramref name="region"/> from a short-lived capture: true if it shows something, false if
+    /// it is black, null if no frame came within a second.
+    /// </summary>
+    static bool? Probe(Func<WgcCapture> start, RECT region)
+    {
+        try
+        {
+            using var cap = start();
+            double until = Clock.Mono + 1;
+            while (Clock.Mono < until)
+            {
+                if (cap.CaptureRegion(region)) return !cap.ReadShrunk().IsBlack();
+                Thread.Sleep(30);
+            }
+        }
+        catch (Exception) { }
+        return null;
+    }
+
+    static string FullscreenHint() => Diagnose.ExclusiveFullscreen()
+        ? " Fortnite looks like it's in Fullscreen mode: Windowed Fullscreen (Window Mode in its video settings) avoids this."
+        : " If it keeps happening, try Windowed Fullscreen (Window Mode in Fortnite's video settings).";
+
+    /// <summary>Once per game window: what is being watched and how, so a setup problem shows before the first find.</summary>
+    void ReportSetup(bool window)
+    {
+        reportedFor = hwnd;
+        Activity.Write($"Watching {Diagnose.Game(hwnd)}. {(window ? "Window" : "Screen")} capture is working.");
     }
 
     /// <summary>The search area of the frame CaptureRoi just took, at full size.</summary>
@@ -359,7 +436,7 @@ sealed class Tracker : IDisposable
         captureFailures++;
         DropCapture();
         if (window && cfg.Source == "auto" && captureFailures >= 3)
-            FallBack($"it keeps failing: {e.Message}");
+            FallBack($"keeps failing ({e.Message})");
         else if (e.Message != lastError)
             Activity.Write($"capture error: {e.Message}");
         lastError = e.Message;
@@ -376,8 +453,10 @@ sealed class Tracker : IDisposable
         windowCaptureFailed = hwnd;
         blankSince = null;
         DropCapture();
-        Activity.Write($"Window capture isn't working ({why}). Capturing the screen where the game is instead, " +
-                       "so banners are missed while another window covers the game.");
+        retryWindowAt = Clock.Mono + retryWindowEvery;
+        Activity.Write($"Warning: window capture {why}, so the tracker is capturing the screen instead and only sees " +
+                       $"banners while nothing covers the middle of the game. It tries the window again in {retryWindowEvery / 60:0} min." +
+                       FullscreenHint());
     }
 
     bool EnsureCapture(IntPtr key, bool window)
@@ -394,7 +473,7 @@ sealed class Tracker : IDisposable
         catch (Exception e)
         {
             if (window && cfg.Source == "auto")
-                FallBack($"can't start it: {e.Message}");
+                FallBack($"can't start ({e.Message})");
             else if (e.Message != lastError)
                 Activity.Write($"capture error: {e.Message}");
             lastError = e.Message;
@@ -444,6 +523,7 @@ sealed class Tracker : IDisposable
             {
                 hwnd = found;
                 DropCapture();
+                retryWindowEvery = RetryWindowFirstS;
             }
             if (session == null && !holdNew) StartSession();
         }
@@ -535,6 +615,14 @@ sealed class Tracker : IDisposable
     void LogEvent(LootEvent ev)
     {
         log.Add(session!, ev);
+        try
+        {
+            log.SaveCard(session!, ev);
+        }
+        catch (Exception e)  // only a record for checking names later: never worth losing the find over
+        {
+            Activity.Write($"Couldn't save the item card image: {e.Message}");
+        }
         string clock = Fmt.Time(ev.WallTime).PadLeft(11);
         Activity.Write($"  {clock}  +{Fmt.Duration(session!.At(ev.MonoTime))}  {ev.Describe()}");
         PushOverlay();

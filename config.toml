@@ -5,7 +5,8 @@
 poll_hz = 4                       # screen checks per second
 source = "auto"                   # "window": capture the Fortnite window itself (works while it's covered)
                                   # "monitor": capture the screen where the game is
-                                  # "auto": window, switching to monitor if the window comes out black
+                                  # "auto": window, and the screen while the window comes out black
+                                  # but the screen shows the game
 only_when_focused = false         # true: pause while Fortnite isn't the active window
 # Banner search area as fractions of the game window: left, top, right, bottom.
 roi = [0.25, 0.08, 0.75, 0.50]
@@ -25,8 +26,8 @@ snap_score = 80                   # 0-100: how close OCR text must be to snap to
 # name are ignored: Lucky_Locator_-_Item_-_Fortnite.webp = Lucky Locator).
 icon_folder = "assets"
 learn_icons = true                 # save icons of unrecognised rewards to icon_folder/learned
-generic_names = ["Sprite Gizmo"]   # banner texts shared by several items; an unrecognised icon
-                                   # with this text is saved as "Unknown Sprite Gizmo 1" etc.
+generic_names = ["Sprite Gizmo"]   # banner texts shared by several items; an unrecognised icon with
+                                   # this text isn't learned but logged as "Sprite Gizmo (icon unsure)"
 
 [session]
 process_names = ["FortniteClient-Win64-Shipping.exe"]

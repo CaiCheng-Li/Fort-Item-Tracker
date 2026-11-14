@@ -135,13 +135,18 @@ sealed record LootEvent(
     int Reads,
     string BannerText = "",
     double? IconScore = null,
-    string Learned = "")  // path of a newly saved reference icon
+    string Learned = "",     // path of a newly saved reference icon
+    IconMatch? Closest = null,  // best icon guess for a shared banner text (Sprite Gizmo) it wasn't sure of
+    Image32? Card = null)    // the item card, saved to logs\cards
 {
     public string Describe()
     {
-        string text = Item;
-        if (BannerText.Length > 0 && BannerText != Item) text += $" (banner: {BannerText})";
-        else if (IconScore == null && Score == null && Reads > 0) text += " (not in items.txt)";
+        var notes = new List<string>();
+        if (BannerText.Length > 0 && BannerText != Item) notes.Add($"banner: {BannerText}");
+        if (IconScore is double s) notes.Add($"icon {s:0.00}");
+        else if (Closest != null) notes.Add(Closest.Name.Length > 0 ? $"icon unsure, closest: {Closest.Name} {Closest.Raw:0.00}" : "icon unsure");
+        else if (Score == null && Reads > 0) notes.Add("not in items.txt");
+        string text = notes.Count > 0 ? $"{Item} ({string.Join(", ", notes)})" : Item;
         if (Learned.Length > 0) text += $"  [new icon saved: {Path.GetFileName(Learned)}]";
         return text;
     }
@@ -160,8 +165,8 @@ sealed class BannerTracker(Namer namer, double gapS, IconLibrary? icons, bool le
         public double LastSeen = mono;
         public readonly List<string> Reads = [];
         public readonly List<IconMatch> Icons = [];
-        public double BestUnknown;
-        public Image32? Card;
+        public Image32? Card;          // the best-matching card, preferring frames where the text was read too
+        public (bool Named, double Score) CardKey = (false, double.MinValue);
 
         public string? IconConsensus()
         {
@@ -187,20 +192,13 @@ sealed class BannerTracker(Namer namer, double gapS, IconLibrary? icons, bool le
         var a = active ??= new Active(wall, mono);
         a.LastSeen = mono;
         if (read.Name != null) a.Reads.Add(read.Name);
-        if (read.Icon != null)
-        {
-            a.Icons.Add(read.Icon);
-            if (!read.Icon.Confident && read.Name != null && read.Card != null && read.Icon.Score >= a.BestUnknown)
-            {
-                a.BestUnknown = read.Icon.Score;
-                a.Card = read.Card;
-            }
-        }
-        else if (read.Name != null && read.Card != null && a.Card == null)
-        {
-            a.Card = read.Card;
-        }
+        if (read.Icon != null) a.Icons.Add(read.Icon);
+        var key = (read.Name != null, read.Icon?.Score ?? 0);
+        if (read.Card != null && key.CompareTo(a.CardKey) > 0) (a.Card, a.CardKey) = (read.Card, key);
     }
+
+    /// <summary>A banner is on screen and hasn't been logged yet.</summary>
+    public bool Busy => active != null;
 
     /// <summary>
     /// <paramref name="visible"/>: false when the pre-check sees no banner at all (it has left the screen),
@@ -233,9 +231,9 @@ sealed class BannerTracker(Namer namer, double gapS, IconLibrary? icons, bool le
         var a = active!;
         active = null;
         string? iconItem = a.IconConsensus();
-        double? iconScore = iconItem != null ? Math.Round(a.Icons.Where(m => m.Name == iconItem).Max(m => m.Score), 2) : null;
+        double? iconScore = iconItem != null ? Math.Round(a.Icons.Where(m => m.Name == iconItem).Max(m => m.Raw), 2) : null;
         if (a.Reads.Count == 0)
-            return new LootEvent(a.Wall, a.Mono, iconItem ?? "(unreadable)", "", null, 0, "", iconScore);
+            return new LootEvent(a.Wall, a.Mono, iconItem ?? "(unreadable)", "", null, 0, "", iconScore, Card: a.Card);
 
         var resolved = a.Reads.Select(r => (Res: namer.Resolve(r), Raw: r)).ToList();
         var names = resolved.Select(x => x.Res.Name).Distinct().ToList();  // first-seen order
@@ -246,12 +244,18 @@ sealed class BannerTracker(Namer namer, double gapS, IconLibrary? icons, bool le
         var first = resolved.First(x => x.Res.Name == top);
 
         string item = iconItem ?? top, learned = "";
-        if (iconItem == null && learn && a.Card is { Width: > 0, Height: > 0 } && a.Icons.Count >= 2)
+        IconMatch? closest = null;
+        if (iconItem == null && IsGeneric(top))
+        {
+            // Shared text, unknown icon: most likely a known item that looks different on this screen, so
+            // it isn't learned (a learned guess would take over the other items with that text).
+            closest = a.Icons.MaxBy(m => m.Score) ?? new IconMatch("", 0, 0);
+        }
+        else if (iconItem == null && learn && a.Card is { Width: > 0, Height: > 0 } && a.Icons.Count >= 2)
         {
             // No frame matched a reference image: save the icon so the next one is named by it.
-            item = IsGeneric(top) ? icons!.UnknownName(top) : top;
             learned = icons!.Learn(item, a.Card);
         }
-        return new LootEvent(a.Wall, a.Mono, item, first.Raw, first.Res.Score, a.Reads.Count, top, iconScore, learned);
+        return new LootEvent(a.Wall, a.Mono, item, first.Raw, first.Res.Score, a.Reads.Count, top, iconScore, learned, closest, a.Card);
     }
 }
