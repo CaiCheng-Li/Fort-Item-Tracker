@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- 26100 gives GraphicsCaptureSession.MinUpdateInterval; older Windows 10/11 still run it. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>FortItemTracker</AssemblyName>
+    <RootNamespace>FortItemTracker</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Product>Fort Item Tracker</Product>
+    <Version>2.0.0</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- A small background app: no background GC thread, and the image loops get optimised code
+         from their first call instead of running unoptimised for the first seconds. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredCompilationQuickJitForLoops>false</TieredCompilationQuickJitForLoops>
+    <TieredPGO>false</TieredPGO>
+  </PropertyGroup>
+
+  <!-- dotnet publish: one self-contained exe, no .NET install needed to run it. Not compressed: a
+       compressed exe is 56 MB instead of 134, but unpacks into memory and uses 2.5x the RAM. -->
+  <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile Condition="'$(EnableCompressionInSingleFile)' == ''">false</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="app.ico" LogicalName="FortItemTracker.app.ico" />
+  </ItemGroup>
+
+</Project>

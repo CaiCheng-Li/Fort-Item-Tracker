@@ -1,5 +1,6 @@
-.venv/
-__pycache__/
+src/bin/
+src/obj/
+FortItemTracker.exe
 logs/
 assets/learned/
 samples/
