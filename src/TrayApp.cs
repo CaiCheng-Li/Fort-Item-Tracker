@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using Microsoft.Win32;
 
 namespace FortItemTracker;
@@ -26,9 +28,15 @@ sealed class TrayApp : ApplicationContext
     readonly NotifyIcon tray;
     readonly Icon trayIcon, windowIcon;
     readonly Hotkeys hotkeys;
-    readonly System.Windows.Forms.Timer tick;
-    readonly ToolStripMenuItem header, saveItem, resetItem, endItem, resumeMenu, overlayItem, startupItem, testItem;
+    readonly System.Windows.Forms.Timer tick, pulse;
+    readonly MenuStyle style = new();
+    readonly ToolStripMenuItem header, saveItem, resetItem, endItem, resumeMenu, overlayItem, pinItem, startupItem, testItem;
     readonly ToolStripMenuItem[] recent = new ToolStripMenuItem[5];
+    readonly Dictionary<string, Bitmap?> menuIcons = [];
+    readonly List<IntPtr> pulseHandles = [];
+    Icon[]? pulseFrames;
+    int pulseFrame = -1, lastFound;
+    string? lastSession;
     Overlay? overlay;
     LogWindow? logWindow;
     bool exiting;
@@ -43,12 +51,12 @@ sealed class TrayApp : ApplicationContext
         windowIcon = AppIcon.Load();
 
         var menu = new ContextMenuStrip();
-        header = new ToolStripMenuItem("Fort Item Tracker") { Enabled = false };
+        header = new ToolStripMenuItem("Fort Item Tracker") { Enabled = false, Tag = MenuStyle.Header, Image = SparkleImage() };
         header.Font = new Font(header.Font, FontStyle.Bold);
         menu.Items.Add(header);
         for (int i = 0; i < recent.Length; i++)
         {
-            recent[i] = new ToolStripMenuItem { Enabled = false, Visible = false };
+            recent[i] = new ToolStripMenuItem { Enabled = false, Visible = false, Tag = MenuStyle.Info };
             menu.Items.Add(recent[i]);
         }
         menu.Items.Add(new ToolStripSeparator());
@@ -60,8 +68,9 @@ sealed class TrayApp : ApplicationContext
         resumeMenu.DropDownOpening += (_, _) => FillResumeMenu();
         menu.Items.AddRange([saveItem, resetItem, endItem, resumeMenu, new ToolStripSeparator()]);
         overlayItem = Item("Show overlay", ToggleOverlay);
+        pinItem = Item("Pin overlay in place", () => { if (overlay != null) overlay.Pinned = !overlay.Pinned; });
         startupItem = Item("Start with Windows", ToggleStartup);
-        menu.Items.AddRange([overlayItem, startupItem, new ToolStripSeparator()]);
+        menu.Items.AddRange([overlayItem, pinItem, startupItem, new ToolStripSeparator()]);
         testItem = Item("Test screenshots...", TestScreenshots);
         menu.Items.AddRange([
             Item("Activity log", ShowLog),
@@ -74,7 +83,11 @@ sealed class TrayApp : ApplicationContext
             Item("Restart (applies settings)", Restart),
             Item("Exit", Exit),
         ]);
+        float dpi = menu.DeviceDpi / 96f;
+        menu.ImageScalingSize = new Size((int)(20 * dpi), (int)(20 * dpi));
         menu.Opening += (_, _) => RefreshMenu();
+        style.Attach(menu);
+        style.Attach(resumeMenu.DropDown);
 
         tray = new NotifyIcon { Icon = trayIcon, Text = "Fort Item Tracker", ContextMenuStrip = menu, Visible = true };
         tray.MouseDoubleClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowLog(); };
@@ -92,6 +105,8 @@ sealed class TrayApp : ApplicationContext
         SetOverlay(overlayItem.Checked);
         startupItem.Checked = StartupEnabled();
 
+        pulse = new System.Windows.Forms.Timer { Interval = 55 };
+        pulse.Tick += (_, _) => PulseTick();
         tick = new System.Windows.Forms.Timer { Interval = 1000 };
         tick.Tick += (_, _) => RefreshTooltip();
         tick.Start();
@@ -108,8 +123,11 @@ sealed class TrayApp : ApplicationContext
 
     void RefreshTooltip()
     {
-        string text = "Fort Item Tracker\n" + tracker.Status.Text.Replace(" | ", "\n");
+        var st = tracker.Status;
+        string text = "Fort Item Tracker\n" + st.Text.Replace(" | ", "\n");
         tray.Text = text.Length <= 127 ? text : text[..124] + "...";
+        if (st.SessionId != null && st.SessionId == lastSession && st.Found > lastFound) Celebrate();
+        (lastSession, lastFound) = (st.SessionId, st.Found);
     }
 
     void RefreshMenu()
@@ -118,14 +136,51 @@ sealed class TrayApp : ApplicationContext
         header.Text = string.Join("  ·  ", st.Text.Split(" | ").Where(p => !p.StartsWith("last: ")));
         for (int i = 0; i < recent.Length; i++)
         {
-            recent[i].Visible = i < st.Recent.Length;
-            recent[i].Text = i < st.Recent.Length ? "    " + st.Recent[i] : "";
+            bool on = i < st.Recent.Length;
+            recent[i].Visible = on;
+            recent[i].Text = on ? $"{st.Recent[i].Time}   {st.Recent[i].Item}" : "";
+            recent[i].Image = on ? MenuIcon(st.Recent[i].Icon) : null;
         }
         bool running = st.SessionId != null;
         saveItem.Enabled = running;
         endItem.Enabled = running;
         resetItem.Text = running ? "Reset timer and counts" : "Start a new session";
+        pinItem.Enabled = overlay != null;
+        pinItem.Checked = overlay?.Pinned ?? true;
         startupItem.Checked = StartupEnabled();
+    }
+
+    Bitmap? MenuIcon(string? path)
+    {
+        if (path == null) return null;
+        if (menuIcons.TryGetValue(path, out var cached)) return cached;
+        Bitmap? bmp = null;
+        if (ImageIO.Load(path) is Image32 img && img.Width > 0 && img.Height > 0)
+        {
+            using var full = ImageIO.ToBitmap(img, PixelFormat.Format32bppPArgb);
+            const int box = 48;  // the menu scales it down smoothly
+            double f = Math.Min(1.0, box / (double)Math.Max(img.Width, img.Height));
+            int w = Math.Max(1, (int)(img.Width * f)), h = Math.Max(1, (int)(img.Height * f));
+            bmp = new Bitmap(box, box, PixelFormat.Format32bppPArgb);
+            using var g = Graphics.FromImage(bmp);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.DrawImage(full, new Rectangle((box - w) / 2, (box - h) / 2, w, h));
+        }
+        menuIcons[path] = bmp;
+        return bmp;
+    }
+
+    /// <summary>The app icon's two gold sparkles, for the status line.</summary>
+    static Bitmap SparkleImage()
+    {
+        var bmp = new Bitmap(48, 48, PixelFormat.Format32bppPArgb);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var gold = new LinearGradientBrush(new Rectangle(0, 0, 48, 48), Theme.GoldLight, Theme.GoldDeep, 90f);
+        Theme.Sparkle(g, gold, 19, 28, 18);
+        Theme.Sparkle(g, gold, 38, 10, 8);
+        return bmp;
     }
 
     void FillResumeMenu()
@@ -134,7 +189,7 @@ sealed class TrayApp : ApplicationContext
         string? current = tracker.Status.SessionId;
         var saved = tracker.Log.SavedSessions().Take(15).ToList();
         if (saved.Count == 0)
-            resumeMenu.DropDownItems.Add(new ToolStripMenuItem("No saved sessions yet") { Enabled = false });
+            resumeMenu.DropDownItems.Add(new ToolStripMenuItem("No saved sessions yet") { Enabled = false, Tag = MenuStyle.Info });
         foreach (var s in saved)
         {
             string state = s.Id == current ? "   (running now)" : s.Ended ? "" : "   (not ended cleanly)";
@@ -149,6 +204,64 @@ sealed class TrayApp : ApplicationContext
         }
     }
 
+    // ---- the tray icon sparkles when something is found ---------------------------------------
+
+    void Celebrate()
+    {
+        try
+        {
+            pulseFrames ??= MakePulse();
+        }
+        catch (Exception e)  // a decoration: never worth an error
+        {
+            Activity.Write($"tray animation unavailable: {e.Message}");
+            pulseFrames = [];
+        }
+        pulseFrame = 0;
+        pulse.Start();
+    }
+
+    void PulseTick()
+    {
+        if (pulseFrames == null || pulseFrame < 0 || pulseFrame >= pulseFrames.Length)
+        {
+            tray.Icon = trayIcon;
+            pulse.Stop();
+            pulseFrame = -1;
+            return;
+        }
+        tray.Icon = pulseFrames[pulseFrame++];
+    }
+
+    Icon[] MakePulse()
+    {
+        using var icon = trayIcon.ToBitmap();
+        int w = icon.Width, h = icon.Height;
+        var frames = new Icon[18];
+        for (int i = 0; i < frames.Length; i++)
+        {
+            double t = (i + 1) / (double)(frames.Length + 1);
+            float glow = (float)Ease.Bump(t);
+            using var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                using var attrs = new ImageAttributes();  // the gold flares, the dark background stays dark
+                attrs.SetColorMatrix(new ColorMatrix([
+                    [1 + 0.6f * glow, 0, 0, 0, 0], [0, 1 + 0.55f * glow, 0, 0, 0], [0, 0, 1 + 0.25f * glow, 0, 0],
+                    [0, 0, 0, 1, 0], [0, 0, 0, 0, 1],
+                ]));
+                g.DrawImage(icon, new Rectangle(0, 0, w, h), 0, 0, w, h, GraphicsUnit.Pixel, attrs);
+                using var star = new SolidBrush(Color.FromArgb((int)(255 * glow), 255, 252, 230));
+                Theme.Sparkle(g, star, w * 0.76f, h * 0.24f, w * 0.34f * glow, (float)(t * 180));
+            }
+            IntPtr handle = bmp.GetHicon();
+            pulseHandles.Add(handle);
+            frames[i] = Icon.FromHandle(handle);
+        }
+        return frames;
+    }
+
     // ---- actions --------------------------------------------------------------------------------
 
     void SetOverlay(bool on)
@@ -156,7 +269,7 @@ sealed class TrayApp : ApplicationContext
         if (on && overlay == null)
         {
             overlay = new Overlay(cfg, () => tracker.Overlay);
-            Activity.Write("Overlay: on (top-left of the game window)");
+            Activity.Write("Overlay: on. To move it, hover it and click its pin, then drag it.");
         }
         else if (!on && overlay != null)
         {
@@ -200,7 +313,7 @@ sealed class TrayApp : ApplicationContext
 
     void ShowLog()
     {
-        if (logWindow == null || logWindow.IsDisposed) logWindow = new LogWindow(windowIcon);
+        if (logWindow == null || logWindow.IsDisposed) logWindow = new LogWindow(windowIcon, () => tracker.Status);
         logWindow.Show();
         if (logWindow.WindowState == FormWindowState.Minimized) logWindow.WindowState = FormWindowState.Normal;
         logWindow.Activate();
@@ -261,12 +374,15 @@ sealed class TrayApp : ApplicationContext
         exiting = true;
         SystemEvents.SessionEnded -= OnWindowsSessionEnded;
         tick.Stop();
+        pulse.Stop();
         tray.Visible = false;
         overlay?.Dispose();
         hotkeys.Dispose();
         logWindow?.Close();
         tracker.Dispose();  // ends and saves the session
         tray.Dispose();
+        style.Dispose();
+        foreach (var handle in pulseHandles) Native.DestroyIcon(handle);
         ExitThread();
     }
 }

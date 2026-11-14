@@ -33,7 +33,8 @@ sealed class Config
     public string HotkeyReset = "ctrl+shift+r";
 
     // [overlay]
-    public bool OverlayEnabled;
+    public bool OverlayEnabled = true;
+    public string OverlayAnchor = "top-left";  // the game window corner x and y are measured from
     public int OverlayX = 16, OverlayY = 16;
     public double OverlayScale = 1.0;
     public double OverlayOpacity = 0.85;
@@ -75,6 +76,12 @@ sealed class Config
             cfg.Warnings.Add($"config: source = \"{cfg.Source}\" isn't auto, window or monitor; using auto");
             cfg.Source = "auto";
         }
+        cfg.OverlayAnchor = cfg.OverlayAnchor.ToLowerInvariant();
+        if (cfg.OverlayAnchor is not ("top-left" or "top-right" or "bottom-left" or "bottom-right"))
+        {
+            cfg.Warnings.Add($"config: anchor = \"{cfg.OverlayAnchor}\" isn't top-left, top-right, bottom-left or bottom-right; using top-left");
+            cfg.OverlayAnchor = "top-left";
+        }
         if (cfg.Roi.Length != 4) { cfg.Warnings.Add("config: roi needs 4 numbers; using the default"); cfg.Roi = [0.25, 0.08, 0.75, 0.50]; }
         if (cfg.GateHue.Length != 2) { cfg.Warnings.Add("config: gate_hue needs 2 numbers; using the default"); cfg.GateHue = [22, 34]; }
         return cfg;
@@ -105,6 +112,7 @@ sealed class Config
             case ("output", "folder"): Folder = Str(v); break;
             case ("hotkey", "reset"): HotkeyReset = Str(v); break;
             case ("overlay", "enabled"): OverlayEnabled = (bool)v; break;
+            case ("overlay", "anchor"): OverlayAnchor = Str(v); break;
             case ("overlay", "x"): OverlayX = (int)Num(v); break;
             case ("overlay", "y"): OverlayY = (int)Num(v); break;
             case ("overlay", "scale"): OverlayScale = Num(v); break;

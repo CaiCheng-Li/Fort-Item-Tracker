@@ -44,9 +44,12 @@ reset = "ctrl+shift+r"            # timer and counts back to zero (saves and end
 # Always-on-top timer over the game (click-through, never takes focus). Starts as the session
 # timer; after the first find it also shows time since the last item and one row per item found:
 # icon, count (x3) and the time of the latest find.
-# Turn it on with Show overlay in the tray menu (saved here), or for one run with --overlay.
-enabled = false
-x = 16                            # offset from the game window's top-left corner, in pixels
+# On by default; Show overlay in the tray menu turns it off or on (saved here).
+# To move it, point at it, click the pin that appears and drag it; that saves anchor, x and y.
+enabled = true
+anchor = "top-left"               # game window corner to measure from: top-left, top-right,
+                                  # bottom-left or bottom-right
+x = 16                            # distance from that corner, in pixels
 y = 16
 scale = 1.0                       # 1.5 = 50% bigger
 opacity = 0.85                    # panel background, 0.2-1.0

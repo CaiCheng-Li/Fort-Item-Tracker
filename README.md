@@ -24,19 +24,21 @@ Right-click the tray icon for the menu:
 
 | Menu item | What it does |
 |---|---|
-| (status) | Session timer, items found and the last few finds |
+| (status) | Session timer, items found and the last few finds, with their icons |
 | Save session now | Writes the session to disk now (it also saves every 15 s) |
 | Reset timer and counts | Ends and saves the session and starts a new one at 00:00:00 (also **Ctrl+Shift+R**, in game too) |
 | End session | Ends it; a new one starts with the next game launch |
 | Resume a saved session | Continues an earlier session with its timer and items |
 | Show overlay | The timer panel over the game (saved to `config.toml`) |
+| Pin overlay in place | Untick it to move the overlay (the same as clicking its pin, see Overlay) |
 | Start with Windows | Starts the tracker when you sign in |
-| Activity log | What the old console window showed: sessions, finds, problems. Also a double-click on the icon |
+| Activity log | What the old console window showed: sessions, finds, problems, colour-coded, under the live session timer. Also a double-click on the icon |
 | Test screenshots... | Runs detection on banner screenshots (see Checking and tuning) |
 | Open logs folder, Open icons folder, Edit settings, Edit item names | Shortcuts to the files below |
 | Restart | Restarts the tracker so settings changes apply; the session carries on |
 
-The activity log shows each find as it happens:
+The tray icon sparkles briefly each time something is found. The activity log shows each find as it
+happens, in gold:
 
 ```
 Session 20261113-201503 started 2026-11-13 8:15:03 PM
@@ -57,27 +59,49 @@ says so and the menu item still works.
 
 ## Overlay
 
-An optional panel in the top-left corner of the game shows the session timer. After your first find
+A panel in the top-left corner of the game shows the session timer. After your first find
 it adds a **Since last item** timer and one row per item found this session: its icon, how many
-you've found (`x3`), and when you last found one. The most recently found item is at the top, so a
+you've found (`×3`), and when you last found one. The most recently found item is at the top, so a
 repeat find moves its row back up and bumps the count:
 
 ```
+ ✦ SESSION
  00:17:02
- Since last item  00:00:21
- [icon] x3  8:31:44 PM
- [icon] x1  8:24:10 PM
+ SINCE LAST ITEM  00:00:21
+ ─────────────────────
+ [icon] ×3  8:31:44 PM
+ [icon] ×1  8:24:10 PM
 ```
 
-Turn it on with Show overlay in the tray menu, `enabled = true` under `[overlay]` in `config.toml`, or
-for one run with `FortItemTracker.exe --overlay`. It sits on top of the game in Windowed Fullscreen,
-lets clicks pass through to the game, never takes focus, and hides while Fortnite is minimised or no
-session is running. A resumed session shows its earlier finds and carries on its timers. Items without
-an icon (nothing in `assets\` yet) show their name instead.
+It moves rather than jumps: it fades in when the game appears, the digits roll over each second, and
+a find sends a sweep of light across the panel, sparkles out of the item's icon and pops its count,
+while the other rows slide down to make room (or let a repeat find's row slide back to the top).
+
+It is on by default. Turn it off with Show overlay in the tray menu or `enabled = false` under
+`[overlay]` in `config.toml` (`FortItemTracker.exe --overlay` then shows it for one run). It sits on
+top of the game in Windowed Fullscreen, lets clicks pass through to the game, never takes focus, and
+hides while Fortnite is minimised or no session is running. A resumed session shows its earlier finds
+and carries on its timers. Items without an icon (nothing in `assets\` yet) show their name instead.
+
+### Moving it
+
+Point at the overlay (in the lobby, the map, or any time the game shows a mouse cursor) and a pin
+appears in its top-right corner. Click the pin to unpin the overlay: it glows gold and you can drag it
+anywhere over the game. Near an edge it snaps to a small gap from it. Click the pin again to pin it
+there (or untick Pin overlay in place in the tray menu). It also pins itself when you go back to
+playing and the game hides the cursor.
+
+Only the pin catches clicks while the overlay is pinned; everything else goes to the game. Unpinned, the
+panel itself catches clicks so you can drag it.
+
+The spot is saved to `config.toml` as `anchor`, `x` and `y`, measured from the game window's nearest
+corner, so the overlay stays in that corner if the window size changes, and grows away from it as
+items are added: in a bottom corner it grows upwards.
 
 | `[overlay]` setting | What it does |
 |---|---|
-| `x`, `y` | Offset from the game window's top-left corner in pixels (default 16, 16). Keep it out of the middle of the screen, where it would cover the banner. |
+| `anchor` | The game window corner the overlay is placed from: `top-left` (default), `top-right`, `bottom-left` or `bottom-right`. Dragging the overlay sets it. |
+| `x`, `y` | Distance from that corner in pixels (default 16, 16). Keep the overlay out of the middle of the screen, where it would cover the banner. |
 | `scale` | Size; `1.5` is 50% bigger. |
 | `opacity` | Panel background opacity, 0.2-1.0. |
 | `items` | How many different items to list (most recently found first); `0` shows only the timers. |
@@ -245,9 +269,11 @@ src/
   Icons.cs            reward identification from the banner icon, icon learning
   Ocr.cs              Windows OCR, fuzzy text matching
   Sessions.cs         master timer, saved sessions, CSV logs
-  Overlay.cs          on-screen timer overlay (click-through layered window)
+  Overlay.cs          on-screen timer overlay (layered window: click-through except its pin, draggable)
   Hotkeys.cs          system-wide hotkeys (Ctrl+Shift+R reset)
   LogWindow.cs        activity log window
+  Theme.cs            colours, shapes and the tray menu's look
+  Motion.cs           springs and easing for the animations
   TestMode.cs         screenshot tests
   Imaging.cs          image loading (PNG/JPEG/WebP), resizing, HSV
   Config.cs, Toml.cs  config.toml

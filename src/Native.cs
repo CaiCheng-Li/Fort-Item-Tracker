@@ -61,6 +61,14 @@ struct BLENDFUNCTION
     public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+struct CURSORINFO
+{
+    public int cbSize, flags;
+    public IntPtr hCursor;
+    public POINT ptScreenPos;
+}
+
 static class Native
 {
     public delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
@@ -88,6 +96,15 @@ static class Native
     public static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT dst, ref SIZE size, IntPtr hdcSrc,
         ref POINT src, uint key, ref BLENDFUNCTION blend, uint flags);
 
+    [DllImport("user32.dll")] public static extern bool GetCursorInfo(ref CURSORINFO info);
+    [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
+    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] public static extern IntPtr SetCapture(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool ReleaseCapture();
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] public static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
+    [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr icon);
+
     [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
     [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr hdc);
     [DllImport("gdi32.dll")]
@@ -96,6 +113,8 @@ static class Native
     [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr obj);
 
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out RECT value, int size);
+    [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] public static extern int SetWindowTheme(IntPtr hwnd, string? app, string? idList);
 
     [DllImport("kernel32.dll")] public static extern bool AttachConsole(int pid);
     [DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int which);

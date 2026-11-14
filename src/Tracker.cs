@@ -5,23 +5,31 @@ namespace FortItemTracker;
 
 sealed record OverlayRow(string Name, string Time, string? Icon, int Count);
 
-/// <summary>What the overlay draws. Replaced whole, so the UI thread always sees a consistent state.</summary>
-sealed record OverlayState(bool Visible, int X, int Y, double TimerAt, double MonoRef, double? LastItemT, OverlayRow[] Rows)
+/// <summary>
+/// What the overlay draws, and the game window's client area (screen pixels) it sits on. Replaced
+/// whole, so the UI thread always sees a consistent state.
+/// </summary>
+sealed record OverlayState(bool Visible, RECT Area, double TimerAt, double MonoRef, double? LastItemT, OverlayRow[] Rows)
 {
-    public static readonly OverlayState Hidden = new(false, 0, 0, 0, 0, null, []);
+    public static readonly OverlayState Hidden = new(false, default, 0, 0, null, []);
 
     public double Timer(double now) => TimerAt + now - MonoRef;
 
     public bool Equals(OverlayState? o) =>
-        o is not null && Visible == o.Visible && X == o.X && Y == o.Y && TimerAt == o.TimerAt && MonoRef == o.MonoRef
+        o is not null && Visible == o.Visible && Area.Equals(o.Area) && TimerAt == o.TimerAt && MonoRef == o.MonoRef
         && LastItemT == o.LastItemT && Rows.SequenceEqual(o.Rows);
 
-    public override int GetHashCode() => HashCode.Combine(Visible, X, Y, TimerAt, MonoRef, LastItemT, Rows.Length);
+    public override int GetHashCode() => HashCode.Combine(Visible, Area.Left, Area.Top, TimerAt, MonoRef, LastItemT, Rows.Length);
 }
 
-sealed record TrackerStatus(string Text, string? SessionId, bool HoldNew, string[] Recent)
+sealed record RecentFind(string Time, string Item, string? Icon);
+
+/// <summary>For the tray menu and the activity window. The session timer reads TimerAt + Clock.Mono - MonoRef.</summary>
+sealed record TrackerStatus(string Text, string? SessionId, bool HoldNew, RecentFind[] Recent, int Found = 0, double TimerAt = 0, double MonoRef = 0)
 {
     public static readonly TrackerStatus Starting = new("Starting...", null, false, []);
+
+    public double Timer(double now) => SessionId == null ? 0 : TimerAt + now - MonoRef;
 }
 
 /// <summary>
@@ -552,8 +560,8 @@ sealed class Tracker : IDisposable
             }
             if (state.Length > 0) text += $" | {state}";
         }
-        var recent = session?.Items.TakeLast(5).Reverse().Select(i => $"{TimeOf(i.FoundAt)}  {i.Item}").ToArray() ?? [];
-        Status = new TrackerStatus(text, session?.Id, holdNew, recent);
+        var recent = session?.Items.TakeLast(5).Reverse().Select(i => new RecentFind(TimeOf(i.FoundAt), i.Item, icons.PathFor(i.Item))).ToArray() ?? [];
+        Status = new TrackerStatus(text, session?.Id, holdNew, recent, session?.Items.Count ?? 0, session?.Prior ?? 0, session?.MonoStart ?? 0);
     }
 
     static string TimeOf(string foundAt)
@@ -589,8 +597,7 @@ sealed class Tracker : IDisposable
         }
         var rows = Tally(s.Items, cfg.OverlayItems)
             .Select(t => new OverlayRow(t.Name, TimeOf(t.FoundAt), icons.PathFor(t.Name), t.Count)).ToArray();
-        var next = new OverlayState(true, a.Left + cfg.OverlayX, a.Top + cfg.OverlayY, s.Prior, s.MonoStart,
-            s.Items.Count > 0 ? s.Items[^1].T : null, rows);
+        var next = new OverlayState(true, a, s.Prior, s.MonoStart, s.Items.Count > 0 ? s.Items[^1].T : null, rows);
         if (!next.Equals(Overlay)) Overlay = next;
     }
 }
