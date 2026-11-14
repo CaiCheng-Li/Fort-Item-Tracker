@@ -340,6 +340,7 @@ class LiveTracker:
                 state = ""
                 if self.session is not None:
                     read = None
+                    visible = None  # unknown when nothing was captured
                     target = self._target()
                     if isinstance(target, str):
                         state = target
@@ -347,11 +348,12 @@ class LiveTracker:
                         roi = self._grab(*target)
                         if roi is not None:
                             score = gate_score(roi, self.cfg.gate_hue)
-                            if score >= self.cfg.gate_threshold:
+                            visible = score >= self.cfg.gate_threshold
+                            if visible:
                                 read = self.reader.read(roi)
                                 if self.debug_dir:
                                     self._save_debug(roi, score, read.lines if read else self.ocr.read(roi))
-                    for ev in self.tracker.update(time.time(), mono, read):
+                    for ev in self.tracker.update(time.time(), mono, read, visible):
                         self._log_event(ev)
                 if mono >= next_status:
                     next_status = mono + 1.0

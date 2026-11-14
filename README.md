@@ -173,9 +173,10 @@ recording played full screen (`--display 2` picks another monitor).
    least 0.6 and leads the next-best image by 0.08. The real Extraction Accelerator banners score 0.85
    with the runner-up at 0.59.
 4. **One event per banner.** Reads are collected while the banner is up; the icon (or, failing that,
-   the text) is decided by vote. The event is written once the banner has been gone for 1 s. Two
-   reads in a row showing a different icon (or clearly different text) start a new event, so rewards
-   shown back to back are logged separately.
+   the text) is decided by vote. A banner counts once, and the event is written when it leaves the
+   screen (the first check where the pre-check fails). Back-to-back banners, even for the same item,
+   disappear between each other, so each is logged separately. If something else gold keeps the
+   pre-check passing, the banner counts as gone after 1 s without a "YOU FOUND" read.
 5. **Sessions.** The Fortnite process is checked every 2 s. The session ends 10 s after it exits,
    and is saved to disk throughout so it can be resumed.
 
@@ -185,7 +186,8 @@ while Fortnite is minimized.
 
 ## Limits
 
-- Two identical items whose banners show back to back with no gap in between are logged as one.
+- A gap between back-to-back banners shorter than one check (0.25 s at `poll_hz = 4`) can be missed,
+  merging the two into one. Raise `poll_hz` if that happens.
 - A window covering the middle of the game hides the banner from the tracker.
 - The overlay can't show over Fortnite in exclusive fullscreen (use Windowed Fullscreen, which the
   tracker needs anyway).

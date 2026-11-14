@@ -137,10 +137,11 @@ class _Active:
 
 
 class BannerTracker:
-    """Collapses the several frames a banner stays on screen into one LootEvent."""
+    """Collapses the several frames a banner stays on screen into one LootEvent.
 
-    SPLIT_BELOW = 60  # text this different from the current banner's suggests a new banner
-    SPLIT_AFTER = 2  # consecutive differing reads needed before splitting
+    A banner counts once, from when it is first read until it leaves the screen. Back-to-back
+    banners (even of the same item) disappear between each other, and that gap starts a new event.
+    """
 
     def __init__(self, namer: Namer, gap_s: float = 1.0, icons: IconLibrary | None = None,
                  learn: bool = True, generic=()):
@@ -150,20 +151,9 @@ class BannerTracker:
         self.learn = learn and icons is not None
         self.generic = [letters(g) for g in generic]
         self.active: _Active | None = None
-        self.pending: list[tuple[float, float, BannerRead]] = []
 
     def is_generic(self, name: str) -> bool:
         return any(fuzz.ratio(letters(name), g) >= 80 for g in self.generic)
-
-    def _differs(self, read: BannerRead) -> bool:
-        """Does this read look like a different banner from the active one?"""
-        current_icon = self.active.icon_consensus()
-        if read.icon and read.icon.confident and current_icon:
-            return read.icon.name != current_icon
-        if read.name and self.active.reads:
-            current = Counter(letters(r) for r in self.active.reads).most_common(1)[0][0]
-            return fuzz.ratio(letters(read.name), current) < self.SPLIT_BELOW
-        return False
 
     def _add(self, wall: float, mono: float, read: BannerRead):
         if self.active is None:
@@ -180,30 +170,26 @@ class BannerTracker:
         elif read.name and read.card is not None and a.card is None:
             a.card = read.card
 
-    def update(self, wall: float, mono: float, read: BannerRead | None) -> list[LootEvent]:
-        events = []
-        if read is None:
-            if self.active and mono - self.active.last_seen > self.gap_s:
-                events.append(self._finish())
-            return events
-        if self.active and self._differs(read):
-            self.pending.append((wall, mono, read))
-            self.active.last_seen = mono
-            if len(self.pending) >= self.SPLIT_AFTER:
-                pending = self.pending
-                events.append(self._finish())
-                for w, m, r in pending:
-                    self._add(w, m, r)
-            return events
-        self.pending = []
-        self._add(wall, mono, read)
-        return events
+    def update(self, wall: float, mono: float, read: BannerRead | None,
+               visible: bool | None = None) -> list[LootEvent]:
+        """`visible`: False when the pre-check sees no banner at all (it has left the screen),
+        True when it passes but OCR may have missed the text, None when the frame wasn't checked."""
+        if read is not None:
+            self._add(wall, mono, read)
+            return []
+        if self.active is None:
+            return []
+        # Gone: the banner's gold left the screen. The timeout covers something else gold
+        # (an open chest) keeping the pre-check passing after the banner itself has gone.
+        if visible is False or mono - self.active.last_seen > self.gap_s:
+            return [self._finish()]
+        return []
 
     def flush(self) -> list[LootEvent]:
         return [self._finish()] if self.active else []
 
     def _finish(self) -> LootEvent:
-        a, self.active, self.pending = self.active, None, []
+        a, self.active = self.active, None
         icon_item = a.icon_consensus()
         icon_score = round(max(m.score for m in a.icons if m.name == icon_item), 2) if icon_item else None
         if not a.reads:

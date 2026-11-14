@@ -12,7 +12,8 @@ gate_threshold = 0.005            # share of gold-yellow pixels needed before OC
 gate_hue = [22, 34]               # gold-yellow hue range, OpenCV 0-180 scale
 ocr_language = "en"               # Windows OCR language, match your game language
 anchor = "YOU FOUND"              # banner text above the item name, in your game language
-banner_gap_s = 1.0                # banner counts as gone after this long without a sighting
+banner_gap_s = 1.0                # a banner ends when it leaves the screen, or after this long
+                                  # without a readable "YOU FOUND" (e.g. a gold chest in view)
 snap_score = 80                   # 0-100: how close OCR text must be to snap to a name in items.txt
 
 [icons]
