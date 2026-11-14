@@ -15,7 +15,7 @@
     <RootNamespace>FortItemTracker</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <Product>Fort Item Tracker</Product>
-    <Version>2.1.0</Version>
+    <Version>2.2.0</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <!-- A small background app: no background GC thread, and the image loops get optimised code
          from their first call instead of running unoptimised for the first seconds. -->
