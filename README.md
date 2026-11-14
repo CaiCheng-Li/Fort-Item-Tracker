@@ -257,3 +257,8 @@ assets/               reward images the banner icon is matched against
 samples/              your screenshots for testing (not in git)
 logs/                 loot.csv, sessions.csv, saved sessions, tracker.log (not in git)
 ```
+
+## License
+
+The code is under the MIT License (see `LICENSE`). The item images in `assets\` are Fortnite artwork
+owned by Epic Games and are not covered by it; Fort Item Tracker is not affiliated with Epic Games.
