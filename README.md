@@ -245,11 +245,17 @@ recording played full screen (`--display 2` picks another monitor).
    only costs an extra read.
 3. **Read the banner.** Only when the pre-check passes: fetch the full-size search area from the
    graphics card, run the built-in Windows OCR, find the line
-   that reads "YOU FOUND" (fuzzy, so "VOU FOUND" counts), and take the text below it. The card above
-   that line is cut out, scaled to 80 px, and matched against every reference image laid on the card's
-   gold at ten sizes (normalised template matching). A match counts when it scores at least 0.6 (0.85
-   for a learned icon) and leads the next-best image by 0.08. The real Extraction Accelerator banners score 0.85 with the
-   runner-up at 0.59. A read takes about 50 ms.
+   that reads "YOU FOUND" (fuzzy, so "VOU FOUND" counts), and take the text below it. Windows OCR
+   sometimes misses that line at one size and reads it at another, and can't read text much under
+   12 px, so after a miss the next check reads the area at 80%, then 60%, 150% and 200% size (each
+   only while that gives OCR 240-1000 px of height), and keeps the size that works. The gold card
+   above the line is found from its own pixels, so its box fits any resolution, HUD scale or text size
+   (if no gold card is found, the box is sized from the text). It is cut out, scaled to 80 px, and
+   matched against every reference image laid on the card's gold at ten sizes (normalised template
+   matching). A match counts when it scores at least 0.6 (0.85 for a learned icon) and leads the
+   next-best image by 0.08. The real Extraction Accelerator banners score 0.83-0.87 with the runner-up
+   at 0.57-0.60, and the same with the text drawn at half or 1.3 times its size, the screenshot at
+   0.5-2 times its resolution, or both. A read takes about 55 ms.
 4. **One event per banner.** Reads are collected while the banner is up; the icon (or, failing that,
    the text) is decided by vote. A banner counts once, and the event is written when it leaves the
    screen (the first check where the pre-check fails). Back-to-back banners, even for the same item,
@@ -276,8 +282,8 @@ while a banner is on screen. Capture pauses while Fortnite is minimized.
   merging the two into one. Raise `poll_hz` if that happens.
 - When capture falls back to the screen (`source = "monitor"`, or `auto` while window capture shows
   black), a window covering the middle of the game hides the banner from the tracker.
-- A gizmo that looks different on your screen than in `assets\` (another resolution, colour setting or
-  capture method) is logged as `Sprite Gizmo (icon unsure)` rather than by name. Its card in
+- A gizmo that looks different on your screen than in `assets\` (a colour setting or capture method)
+  is logged as `Sprite Gizmo (icon unsure)` rather than by name. Its card in
   `logs\cards\` shows which it was; a problem report helps tune the matching.
 - The overlay can't show over Fortnite in exclusive fullscreen (use Windowed Fullscreen, which the
   tracker needs anyway).

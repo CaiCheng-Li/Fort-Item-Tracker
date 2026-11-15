@@ -49,7 +49,8 @@ sealed class Gate
     }
 }
 
-sealed record BannerRead(string? Name, IconMatch? Icon, Image32? Card);
+/// <summary>GoldCard: the card box came from the gold card itself, not from the text height.</summary>
+sealed record BannerRead(string? Name, IconMatch? Icon, Image32? Card, bool GoldCard = false);
 
 sealed class BannerReader(WindowsOcr ocr, string anchor, IconLibrary? icons)
 {
@@ -62,10 +63,24 @@ sealed class BannerReader(WindowsOcr ocr, string anchor, IconLibrary? icons)
         return key.Length <= anchor.Length + 2 ? Fuzz.Ratio(anchor, key) : Fuzz.PartialRatio(anchor, key);
     }
 
-    /// <summary>Null when no banner is visible. <paramref name="lines"/> is everything OCR read.</summary>
+    // Windows OCR can miss the banner text at one size and read it at another (and can't read text much
+    // under 12 px), so after a miss the next frame is read at the next size; the size that last found a
+    // banner is kept. Sizes other than 100% are only used when OCR gets 240-1000 px of height.
+    public static readonly double[] OcrScales = [1.0, 0.8, 0.6, 1.5, 2.0];
+    const int MinOcrHeight = 240, MaxOcrHeight = 1000;
+    int scale;
+
+    public double OcrScale => OcrScales[scale];
+
+    public void ResetScale() => scale = 0;
+
+    /// <summary>Null when no banner is visible. <paramref name="lines"/> is everything OCR read, in roi pixels.</summary>
     public BannerRead? Read(Image32 roi, out List<OcrLine> lines)
     {
-        lines = ocr.Read(roi);
+        double f = OcrScales[scale];
+        lines = f == 1 ? ocr.Read(roi)
+            : ocr.Read(roi.Resize((int)Math.Round(roi.Width * f), (int)Math.Round(roi.Height * f)))
+                .Select(ln => new OcrLine(ln.Text, ln.X0 / f, ln.Y0 / f, ln.X1 / f, ln.Y1 / f)).ToList();
         OcrLine? found = null;
         double bestScore = 75 - 1e-9;
         foreach (var ln in lines)
@@ -73,7 +88,12 @@ sealed class BannerReader(WindowsOcr ocr, string anchor, IconLibrary? icons)
             double s = AnchorScore(ln.Text);
             if (s > bestScore) (found, bestScore) = (ln, s);
         }
-        if (found == null) return null;
+        if (found == null)
+        {
+            do scale = (scale + 1) % OcrScales.Length;
+            while (scale > 0 && roi.Height * OcrScales[scale] is < MinOcrHeight or > MaxOcrHeight);
+            return null;
+        }
         var a = found;
         double h = a.Y1 - a.Y0, w = a.X1 - a.X0;
         var below = lines
@@ -82,9 +102,9 @@ sealed class BannerReader(WindowsOcr ocr, string anchor, IconLibrary? icons)
                          && Math.Abs(ln.Cx - a.Cx) <= 0.6 * Math.Max(w, ln.X1 - ln.X0))
             .OrderBy(ln => ln.Y0);
         string name = string.Join(" ", below.Select(ln => ln.Text)).Trim();
-        var card = IconLibrary.CardCrop(roi, a);
+        var card = IconLibrary.CardCrop(roi, a, out bool gold);
         var icon = icons?.Identify(card);
-        return new BannerRead(Fuzz.Letters(name).Length >= 2 ? name : null, icon, card);
+        return new BannerRead(Fuzz.Letters(name).Length >= 2 ? name : null, icon, card, gold);
     }
 }
 

@@ -29,16 +29,28 @@ static class TestMode
             var sw = Stopwatch.StartNew();
             double score = gate.Score(roi, cfg.GateHue[0], cfg.GateHue[1]);
             double t1 = sw.Elapsed.TotalMilliseconds;
-            var read = reader.Read(roi, out var lines);
+            // The tracker tries the next OCR size on the next frame; here every size is tried on this image.
+            reader.ResetScale();
+            BannerRead? read = null;
+            List<OcrLine> lines = [];
+            double ocrScale = 1;
+            do
+            {
+                ocrScale = reader.OcrScale;
+                read = reader.Read(roi, out lines);
+            } while (read == null && reader.OcrScale != 1);  // back at 100%: every size was tried
             double t2 = sw.Elapsed.TotalMilliseconds;
             string verdict = score >= cfg.GateThreshold ? "pass" : "below threshold";
-            print($"{name}: pre-check {score:0.0000} ({verdict}, {t1:0.00} ms), read {t2 - t1:0.0} ms");
+            string size = read != null && ocrScale != 1 ? $", text read at {ocrScale:0%} size" : "";
+            print($"{name}: pre-check {score:0.0000} ({verdict}, {t1:0.00} ms), read {t2 - t1:0.0} ms{size}");
             if (read == null)
             {
                 print("   no banner");
             }
             else
             {
+                if (verbose && read.Card is { } c)
+                    print($"   card: {c.Width}x{c.Height} px, " + (read.GoldCard ? "found from its gold" : "no gold card found, sized from the text"));
                 if (read.Icon is { Confident: true } m)
                     print($"   FOUND: {m.Name}  ({Score(m)}, next best {m.RunnerUp:0.00})");
                 else if (read.Icon is IconMatch u)

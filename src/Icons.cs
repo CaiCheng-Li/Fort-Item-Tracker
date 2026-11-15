@@ -77,11 +77,18 @@ sealed class IconLibrary
         return s.Length > 0 ? s : "unnamed";
     }
 
-    /// <summary>The item card above the "YOU FOUND" line.</summary>
-    public static Image32 CardCrop(Image32 roi, OcrLine anchor)
+    /// <summary>
+    /// The item card above the "YOU FOUND" line: the gold card itself when it can be found
+    /// (<paramref name="found"/>), else a box sized from the text height.
+    /// </summary>
+    public static Image32 CardCrop(Image32 roi, OcrLine anchor, out bool found)
     {
-        double h = anchor.Y1 - anchor.Y0;
         int R(double v) => Math.Max(0, (int)Math.Round(v));
+        var card = CardFinder.Find(roi, anchor);
+        found = card != null;
+        if (card is { } c)
+            return roi.Crop(R(c.Cx - c.Side / 2), R(c.Cy - c.Side / 2), R(c.Cx + c.Side / 2), R(c.Cy + c.Side / 2));
+        double h = anchor.Y1 - anchor.Y0;
         return roi.Crop(R(anchor.Cx - 3 * h), R(anchor.Y0 - 6.5 * h), R(anchor.Cx + 3 * h), R(anchor.Y0 - 0.5 * h));
     }
 
