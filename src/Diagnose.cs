@@ -185,7 +185,17 @@ static class ProblemReport
         AddText(archive, "items.txt", Path.Combine(root, "items.txt"));
         foreach (var name in new[] { "tracker.log", "tracker.old.log", "loot.csv", "sessions.csv" })
             AddText(archive, $"logs/{name}", Path.Combine(logFolder, name));
-        foreach (var f in Files(Path.Combine(Config.Resolve(root, cfg.IconFolder), "learned")))
+        // Which reference images there are and whether Windows can read them (a .webp needs a codec).
+        string iconDir = Config.Resolve(root, cfg.IconFolder);
+        var icons = new StringBuilder();
+        foreach (var f in Files(iconDir).Concat(Files(Path.Combine(iconDir, "learned"))))
+        {
+            var img = ImageIO.Load(f);
+            icons.AppendLine($"{Path.GetRelativePath(iconDir, f)}  {new FileInfo(f).Length} bytes  " +
+                             (img != null ? $"{img.Width}x{img.Height}" : "CAN'T READ"));
+        }
+        Write(archive, "icons.txt", icons.Length > 0 ? icons.ToString() : "no images in the icon folder\n");
+        foreach (var f in Files(Path.Combine(iconDir, "learned")))
             archive.CreateEntryFromFile(f, $"learned/{Path.GetFileName(f)}");
         string cards = Path.Combine(logFolder, "cards");
         if (Directory.Exists(cards))

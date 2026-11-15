@@ -37,6 +37,9 @@ sealed class IconLibrary
     readonly List<(string Name, List<(Template[] Set, bool Learned)> Sets)> refs = [];
     readonly Dictionary<string, string> paths = [];
 
+    /// <summary>Image files in the icon folders that Windows couldn't decode (e.g. .webp without its codec).</summary>
+    public readonly List<string> Unreadable = [];
+
     public IconLibrary(string folder)
     {
         Folder = folder;
@@ -53,6 +56,7 @@ sealed class IconLibrary
     {
         refs.Clear();
         paths.Clear();
+        Unreadable.Clear();
         if (Directory.Exists(Folder))
             foreach (var path in Directory.GetFiles(Folder).Order(StringComparer.OrdinalIgnoreCase))
                 Load(path, NameFromFile(path), false);
@@ -105,7 +109,11 @@ sealed class IconLibrary
     {
         if (!ImageTypes.Contains(Path.GetExtension(path).ToLowerInvariant())) return;
         var img = ImageIO.Load(path);
-        if (img == null || img.Width == 0 || img.Height == 0) return;
+        if (img == null || img.Width == 0 || img.Height == 0)
+        {
+            Unreadable.Add(Path.GetFileName(path));
+            return;
+        }
         var set = new Template[Scales.Length];
         for (int i = 0; i < Scales.Length; i++)
         {

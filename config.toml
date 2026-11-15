@@ -23,7 +23,7 @@ snap_score = 80                   # 0-100: how close OCR text must be to snap to
 [icons]
 # Rewards are named by the icon on the banner, matched against the images in icon_folder.
 # Name each image after the item (underscores, dashes, "Item" and "Fortnite" in the file
-# name are ignored: Lucky_Locator_-_Item_-_Fortnite.webp = Lucky Locator).
+# name are ignored: Lucky_Locator_-_Item_-_Fortnite.png = Lucky Locator).
 icon_folder = "assets"
 learn_icons = true                 # save icons of unrecognised rewards to icon_folder/learned
 generic_names = ["Sprite Gizmo"]   # banner texts shared by several items; an unrecognised icon with

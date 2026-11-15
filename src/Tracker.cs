@@ -159,6 +159,14 @@ sealed class Tracker : IDisposable
     public static IconLibrary MakeIcons(Config cfg, string root, Action<string> print)
     {
         var lib = new IconLibrary(Config.Resolve(root, cfg.IconFolder));
+        if (lib.Unreadable.Count > 0)
+        {
+            bool webp = lib.Unreadable.Any(f => f.EndsWith(".webp", StringComparison.OrdinalIgnoreCase));
+            print($"Warning: Windows can't read {lib.Unreadable.Count} icon image(s) in {lib.Folder}: " +
+                  string.Join(", ", lib.Unreadable) + ". Those items can't be named by their icon. " +
+                  (webp ? "Save them as .png, or install \"WebP Image Extensions\" from the Microsoft Store and restart."
+                        : "Save them again as .png."));
+        }
         if (lib.Count == 0) print($"icons: no reference images in {lib.Folder}; rewards will be named from the banner text");
         return lib;
     }

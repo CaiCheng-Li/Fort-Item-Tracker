@@ -73,9 +73,10 @@ says so and the menu item still works.
    closest: Portable Extractor 0.55)`, in yellow, instead of a guess. Every find's item card is saved in
    `logs\cards\`, so you can see what it was.
 4. **Send a report.** Still wrong? Pick **Save a problem report** in the tray menu. It saves a zip to your
-   desktop with the activity log, `loot.csv`, settings, learned icons, the last few sessions' item cards
-   and a description of your displays (size, scaling, HDR) and graphics card. It holds no full
-   screenshots, and your Windows user folder is written as `%USERPROFILE%`. Send that file.
+   desktop with the activity log, `loot.csv`, settings, learned icons, the last few sessions' item cards,
+   a list of the icon images and whether Windows can read them, and a description of your displays
+   (size, scaling, HDR) and graphics card. It holds no full screenshots, and your Windows user folder
+   is written as `%USERPROFILE%`. Send that file.
 
 ## Overlay
 
@@ -192,9 +193,11 @@ If the columns change in an update, the old `loot.csv` is renamed to `loot_old_<
 
 `assets\` currently holds the five gizmos and the Pirate Token. The weekly gold cosmetics, Pirate Shop
 Access and the week 3-5 rewards get learned the first time you find them. To add an image yourself,
-put a picture of the item (a transparent PNG/WebP works best) in `assets\` and name it after the item.
+put a picture of the item (a transparent PNG works best) in `assets\` and name it after the item.
 Underscores, dashes and the words "Item" and "Fortnite" in the file name are ignored, so
-`Lucky_Locator_-_Item_-_Fortnite.webp` is "Lucky Locator".
+`Lucky_Locator_-_Item_-_Fortnite.png` is "Lucky Locator". JPEG works too. WebP only works when
+Windows has the "WebP Image Extensions" app, which some Windows installs leave out; the activity log
+warns about any image it can't read, and those items then can't be named by their icon.
 
 ## Checking and tuning
 
@@ -318,7 +321,7 @@ src/
   Motion.cs           springs and easing for the animations
   TestMode.cs         screenshot tests
   Diagnose.cs         the setup line (game size, display, scaling, HDR) and the problem report
-  Imaging.cs          image loading (PNG/JPEG/WebP), resizing, HSV
+  Imaging.cs          image loading (Windows codecs), resizing, HSV
   Config.cs, Toml.cs  config.toml
   Native.cs           Win32 calls
 assets/               reward images the banner icon is matched against
