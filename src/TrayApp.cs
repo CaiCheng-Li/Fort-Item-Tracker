@@ -30,7 +30,7 @@ sealed class TrayApp : ApplicationContext
     readonly Hotkeys hotkeys;
     readonly System.Windows.Forms.Timer tick, pulse;
     readonly MenuStyle style = new();
-    readonly ToolStripMenuItem header, saveItem, resetItem, endItem, resumeMenu, overlayItem, pinItem, startupItem, testItem, reportItem;
+    readonly ToolStripMenuItem header, saveItem, pauseItem, resetItem, endItem, resumeMenu, overlayItem, pinItem, resetPosItem, startupItem, testItem, reportItem;
     readonly ToolStripMenuItem[] recent = new ToolStripMenuItem[5];
     readonly Dictionary<string, Bitmap?> menuIcons = [];
     readonly List<IntPtr> pulseHandles = [];
@@ -61,16 +61,18 @@ sealed class TrayApp : ApplicationContext
         }
         menu.Items.Add(new ToolStripSeparator());
         saveItem = Item("Save session now", tracker.RequestSave);
+        pauseItem = Item("Pause session", tracker.RequestTogglePause);
         resetItem = Item("Reset timer and counts", tracker.RequestReset);
         endItem = Item("End session", tracker.RequestEnd);
         resumeMenu = new ToolStripMenuItem("Resume a saved session");
         resumeMenu.DropDownItems.Add(new ToolStripMenuItem("...") { Enabled = false });
         resumeMenu.DropDownOpening += (_, _) => FillResumeMenu();
-        menu.Items.AddRange([saveItem, resetItem, endItem, resumeMenu, new ToolStripSeparator()]);
+        menu.Items.AddRange([saveItem, pauseItem, resetItem, endItem, resumeMenu, new ToolStripSeparator()]);
         overlayItem = Item("Show overlay", ToggleOverlay);
         pinItem = Item("Pin overlay in place", () => { if (overlay != null) overlay.Pinned = !overlay.Pinned; });
         startupItem = Item("Start with Windows", ToggleStartup);
-        menu.Items.AddRange([overlayItem, pinItem, startupItem, new ToolStripSeparator()]);
+        resetPosItem = Item("Reset overlay position", ResetOverlayPosition);
+        menu.Items.AddRange([overlayItem, pinItem, resetPosItem, startupItem, new ToolStripSeparator()]);
         testItem = Item("Test screenshots...", TestScreenshots);
         reportItem = Item("Save a problem report", SaveReport);
         menu.Items.AddRange([
@@ -95,13 +97,13 @@ sealed class TrayApp : ApplicationContext
         tray.MouseDoubleClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowLog(); };
 
         hotkeys = new Hotkeys();
-        hotkeys.Pressed += name => { if (name == "reset") tracker.RequestReset(); };
-        if (hotkeys.Register("reset", cfg.HotkeyReset) is string error) Activity.Write($"Hotkey not available: {error}");
-        else if (cfg.HotkeyReset.Trim().Length > 0)
+        hotkeys.Pressed += name =>
         {
-            resetItem.ShortcutKeyDisplayString = cfg.HotkeyReset.ToUpperInvariant();
-            Activity.Write($"Reset hotkey (works in game): {cfg.HotkeyReset.ToUpperInvariant()}");
-        }
+            if (name == "reset") tracker.RequestReset();
+            else if (name == "pause") tracker.RequestTogglePause();
+        };
+        AddHotkey("reset", "Reset", cfg.HotkeyReset, resetItem);
+        AddHotkey("pause", "Pause/resume", cfg.HotkeyPause, pauseItem);
 
         overlayItem.Checked = cfg.OverlayEnabled || opts.Overlay;
         SetOverlay(overlayItem.Checked);
@@ -120,6 +122,16 @@ sealed class TrayApp : ApplicationContext
     }
 
     static ToolStripMenuItem Item(string text, Action action) => new(text, null, (_, _) => action());
+
+    void AddHotkey(string name, string label, string keys, ToolStripMenuItem item)
+    {
+        if (hotkeys.Register(name, keys) is string error) Activity.Write($"Hotkey not available: {error}");
+        else if (keys.Trim().Length > 0)
+        {
+            item.ShortcutKeyDisplayString = keys.ToUpperInvariant();
+            Activity.Write($"{label} hotkey (works in game): {keys.ToUpperInvariant()}");
+        }
+    }
 
     // ---- status ---------------------------------------------------------------------------------
 
@@ -145,6 +157,8 @@ sealed class TrayApp : ApplicationContext
         }
         bool running = st.SessionId != null;
         saveItem.Enabled = running;
+        pauseItem.Enabled = running;
+        pauseItem.Text = st.Paused ? "Resume paused session" : "Pause session";
         endItem.Enabled = running;
         resetItem.Text = running ? "Reset timer and counts" : "Start a new session";
         pinItem.Enabled = overlay != null;
@@ -279,6 +293,17 @@ sealed class TrayApp : ApplicationContext
             overlay = null;
             Activity.Write("Overlay: off");
         }
+    }
+
+    void ResetOverlayPosition()
+    {
+        if (overlay != null)
+        {
+            overlay.ResetPosition();  // writes the log line too
+            return;
+        }
+        Overlay.SavePosition(cfg, Overlay.DefaultAnchor, Overlay.DefaultOffset, Overlay.DefaultOffset);
+        Activity.Write($"Overlay moved back to {Overlay.DefaultOffset}, {Overlay.DefaultOffset} px from the top left corner of the game");
     }
 
     void ToggleOverlay()

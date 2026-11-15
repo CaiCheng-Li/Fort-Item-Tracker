@@ -31,6 +31,7 @@ sealed class Config
 
     // [hotkey]
     public string HotkeyReset = "ctrl+shift+r";
+    public string HotkeyPause = "ctrl+shift+p";
 
     // [overlay]
     public bool OverlayEnabled = true;
@@ -111,6 +112,7 @@ sealed class Config
             case ("session", "end_grace_s"): EndGraceS = Num(v); break;
             case ("output", "folder"): Folder = Str(v); break;
             case ("hotkey", "reset"): HotkeyReset = Str(v); break;
+            case ("hotkey", "pause"): HotkeyPause = Str(v); break;
             case ("overlay", "enabled"): OverlayEnabled = (bool)v; break;
             case ("overlay", "anchor"): OverlayAnchor = Str(v); break;
             case ("overlay", "x"): OverlayX = (int)Num(v); break;

@@ -27,15 +27,37 @@ sealed class Session(string id, double wallStart, double monoStart, double prior
 {
     public readonly string Id = id;
     public readonly double WallStart = wallStart;  // when the session was first started
-    public readonly double MonoStart = monoStart;  // Clock.Mono when this run of it started
-    public readonly double Prior = prior;          // master-timer seconds from earlier runs (a resumed session)
+    public double MonoStart { get; private set; } = monoStart;  // Clock.Mono when this run of it started
+    public double Prior { get; private set; } = prior;          // master-timer seconds from earlier runs
+    public double? PausedAt { get; private set; }               // Clock.Mono when paused; the timer stands still
     public List<FoundItem> Items = [];
     public List<double[]> Runs = [];               // [start, end] wall times of each run
+
+    public bool Paused => PausedAt != null;
 
     /// <summary>Master timer value at a Clock.Mono moment of this run.</summary>
     public double At(double mono) => Prior + mono - MonoStart;
 
-    public double Elapsed() => At(Clock.Mono);
+    public double Elapsed() => At(PausedAt ?? Clock.Mono);
+
+    /// <summary>Stops the master timer and closes the current run.</summary>
+    public void Pause()
+    {
+        if (Paused) return;
+        PausedAt = Clock.Mono;
+        if (Runs.Count > 0) Runs[^1][1] = Clock.Wall;
+    }
+
+    /// <summary>Starts the master timer again from where it stood, as a new run.</summary>
+    public void Unpause()
+    {
+        if (!Paused) return;
+        Prior = Elapsed();
+        MonoStart = Clock.Mono;
+        PausedAt = null;
+        double wall = Clock.Wall;
+        Runs.Add([wall, wall]);
+    }
 
     public string Summary() => string.Join("; ", Items
         .GroupBy(i => i.Item)
@@ -121,7 +143,7 @@ sealed class LootLog
     public void Save(Session s, bool ended = false)
     {
         double now = Clock.Wall;
-        if (s.Runs.Count > 0) s.Runs[^1][1] = now;
+        if (s.Runs.Count > 0 && !s.Paused) s.Runs[^1][1] = now;  // a paused run ended when it was paused
         var state = new SavedSession
         {
             Id = s.Id, Started = s.WallStart, Elapsed = Math.Round(s.Elapsed(), 1), Ended = ended, SavedAt = now,

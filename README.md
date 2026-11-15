@@ -26,11 +26,13 @@ Right-click the tray icon for the menu:
 |---|---|
 | (status) | Session timer, items found and the last few finds, with their icons |
 | Save session now | Writes the session to disk now (it also saves every 15 s) |
+| Pause session | Stops the session timer and tracking until you resume it (also **Ctrl+Shift+P**, in game too) |
 | Reset timer and counts | Ends and saves the session and starts a new one at 00:00:00 (also **Ctrl+Shift+R**, in game too) |
 | End session | Ends it; a new one starts with the next game launch |
 | Resume a saved session | Continues an earlier session with its timer and items |
 | Show overlay | The timer panel over the game (saved to `config.toml`) |
 | Pin overlay in place | Untick it to move the overlay (the same as clicking its pin, see Overlay) |
+| Reset overlay position | Moves the overlay back to its default spot, top left of the game |
 | Start with Windows | Starts the tracker when you sign in |
 | Activity log | What the old console window showed: sessions, finds, problems, colour-coded, under the live session timer. Also a double-click on the icon |
 | Test screenshots... | Runs detection on banner screenshots (see Checking and tuning) |
@@ -58,6 +60,16 @@ current session is saved and ended, and a new one starts at 00:00:00. The old on
 and `sessions.csv` and can be continued from Resume a saved session. Change or turn off the hotkey
 under `[hotkey]` in `config.toml`; if another program already uses the combination, the activity log
 says so and the menu item still works.
+
+### Pausing a session
+
+Press **Ctrl+Shift+P** anywhere, including in game, or use Pause session in the tray menu, to take a
+break without ending the session. The master timer stops, nothing is tracked, and the overlay shows
+**PAUSED** with the timer held. Press it again, or use Resume paused session, and the timer carries on
+from where it stopped, with the same session and items. A paused session isn't ended when Fortnite
+closes, so you can quit the game and come back to it later. Each stretch between pauses is a separate
+run in the saved session, and `sessions.csv` counts only the time it wasn't paused. Change or turn off
+the hotkey with `pause` under `[hotkey]` in `config.toml`.
 
 ## If something looks wrong
 
@@ -101,7 +113,8 @@ while the other rows slide down to make room (or let a repeat find's row slide b
 It is on by default. Turn it off with Show overlay in the tray menu or `enabled = false` under
 `[overlay]` in `config.toml` (`FortItemTracker.exe --overlay` then shows it for one run). It sits on
 top of the game in Windowed Fullscreen, lets clicks pass through to the game, never takes focus, and
-hides while Fortnite is minimised or no session is running. A resumed session shows its earlier finds
+hides while Fortnite is minimised or no session is running. While a session is paused its label reads
+PAUSED and the timers stand still. A resumed session shows its earlier finds
 and carries on its timers. Items without an icon (nothing in `assets\` yet) show their name instead.
 
 ### Moving it
@@ -118,6 +131,10 @@ panel itself catches clicks so you can drag it.
 The spot is saved to `config.toml` as `anchor`, `x` and `y`, measured from the game window's nearest
 corner, so the overlay stays in that corner if the window size changes, and grows away from it as
 items are added: in a bottom corner it grows upwards.
+
+To put it back where it started (16, 16 px from the top-left corner), click the circular arrow left of
+the pin while the overlay is unpinned, or use Reset overlay position in the tray menu. The overlay glides back and the default spot is saved to `config.toml`. This works even
+while the overlay is turned off, so it appears in the default spot when you turn it back on.
 
 | `[overlay]` setting | What it does |
 |---|---|
@@ -315,7 +332,7 @@ src/
   Ocr.cs              Windows OCR, fuzzy text matching
   Sessions.cs         master timer, saved sessions, CSV logs
   Overlay.cs          on-screen timer overlay (layered window: click-through except its pin, draggable)
-  Hotkeys.cs          system-wide hotkeys (Ctrl+Shift+R reset)
+  Hotkeys.cs          system-wide hotkeys (Ctrl+Shift+R reset, Ctrl+Shift+P pause)
   LogWindow.cs        activity log window
   Theme.cs            colours, shapes and the tray menu's look
   Motion.cs           springs and easing for the animations

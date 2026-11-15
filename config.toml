@@ -40,6 +40,7 @@ folder = "logs"
 # Works anywhere, including in game. Modifiers: ctrl, alt, shift, win; key: A-Z, 0-9 or F1-F24.
 reset = "ctrl+shift+r"            # timer and counts back to zero (saves and ends the session,
                                   # starts a new one); "" turns it off
+pause = "ctrl+shift+p"            # pause the session timer and tracking; press again to resume
 
 [overlay]
 # Always-on-top timer over the game (click-through, never takes focus). Starts as the session
@@ -47,6 +48,7 @@ reset = "ctrl+shift+r"            # timer and counts back to zero (saves and end
 # icon, count (x3) and the time of the latest find.
 # On by default; Show overlay in the tray menu turns it off or on (saved here).
 # To move it, point at it, click the pin that appears and drag it; that saves anchor, x and y.
+# Reset overlay position in the tray menu puts it back at top-left, 16, 16.
 enabled = true
 anchor = "top-left"               # game window corner to measure from: top-left, top-right,
                                   # bottom-left or bottom-right

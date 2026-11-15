@@ -9,27 +9,31 @@ sealed record OverlayRow(string Name, string Time, string? Icon, int Count);
 /// What the overlay draws, and the game window's client area (screen pixels) it sits on. Replaced
 /// whole, so the UI thread always sees a consistent state.
 /// </summary>
-sealed record OverlayState(bool Visible, RECT Area, double TimerAt, double MonoRef, double? LastItemT, OverlayRow[] Rows)
+sealed record OverlayState(bool Visible, RECT Area, double TimerAt, double MonoRef, double? LastItemT, OverlayRow[] Rows, bool Paused = false)
 {
     public static readonly OverlayState Hidden = new(false, default, 0, 0, null, []);
 
-    public double Timer(double now) => TimerAt + now - MonoRef;
+    public double Timer(double now) => Paused ? TimerAt : TimerAt + now - MonoRef;
 
     public bool Equals(OverlayState? o) =>
         o is not null && Visible == o.Visible && Area.Equals(o.Area) && TimerAt == o.TimerAt && MonoRef == o.MonoRef
-        && LastItemT == o.LastItemT && Rows.SequenceEqual(o.Rows);
+        && LastItemT == o.LastItemT && Paused == o.Paused && Rows.SequenceEqual(o.Rows);
 
     public override int GetHashCode() => HashCode.Combine(Visible, Area.Left, Area.Top, TimerAt, MonoRef, LastItemT, Rows.Length);
 }
 
 sealed record RecentFind(string Time, string Item, string? Icon);
 
-/// <summary>For the tray menu and the activity window. The session timer reads TimerAt + Clock.Mono - MonoRef.</summary>
-sealed record TrackerStatus(string Text, string? SessionId, bool HoldNew, RecentFind[] Recent, int Found = 0, double TimerAt = 0, double MonoRef = 0)
+/// <summary>
+/// For the tray menu and the activity window. The session timer reads TimerAt + Clock.Mono - MonoRef, or
+/// TimerAt while paused.
+/// </summary>
+sealed record TrackerStatus(string Text, string? SessionId, bool HoldNew, RecentFind[] Recent, int Found = 0, double TimerAt = 0,
+    double MonoRef = 0, bool Paused = false)
 {
     public static readonly TrackerStatus Starting = new("Starting...", null, false, []);
 
-    public double Timer(double now) => SessionId == null ? 0 : TimerAt + now - MonoRef;
+    public double Timer(double now) => SessionId == null ? 0 : Paused ? TimerAt : TimerAt + now - MonoRef;
 }
 
 /// <summary>
@@ -131,6 +135,7 @@ sealed class Tracker : IDisposable
         holdNew = true;
     });
     public void RequestResume(string id) => Post(() => ResumeNow(id));
+    public void RequestTogglePause() => Post(TogglePause);
 
     // ---- setup ----------------------------------------------------------------------------
 
@@ -237,14 +242,14 @@ sealed class Tracker : IDisposable
         {
             double mono = Clock.Mono;
             while (commands.TryDequeue(out var cmd)) cmd();
-            if (session != null && mono >= nextAutosave) SaveSession();
+            if (session is { Paused: false } && mono >= nextAutosave) SaveSession();
             if (mono >= nextProcessCheck)
             {
                 CheckProcess(mono);
                 nextProcessCheck = mono + (gameRunning || session != null ? ProcessCheckS : WaitingCheckS);
             }
             string state = "";
-            if (session != null)
+            if (session is { Paused: false })
             {
                 BannerRead? read = null;
                 bool? visible = null;  // unknown when nothing new was captured
@@ -277,7 +282,7 @@ sealed class Tracker : IDisposable
                 nextStatus = mono + 1;
                 PublishStatus(state);
             }
-            double wait = session != null && state.Length == 0 ? interval : 0.5;
+            double wait = session is { Paused: false } && state.Length == 0 ? interval : 0.5;
             double left = wait - (Clock.Mono - mono);
             if (left > 0) wake.WaitOne(TimeSpan.FromSeconds(left));
         }
@@ -540,7 +545,7 @@ sealed class Tracker : IDisposable
             holdNew = false;  // game closed: the next launch starts a new session
             DropCapture();
         }
-        else
+        else if (!session.Paused)  // a paused session waits for you, even with the game closed
         {
             missingSince ??= mono;
             if (mono - missingSince >= cfg.EndGraceS) EndSession();
@@ -603,6 +608,32 @@ sealed class Tracker : IDisposable
         StartSession();
     }
 
+    void TogglePause()
+    {
+        if (session == null)
+        {
+            Activity.Write("No session running, nothing to pause.");
+            return;
+        }
+        if (session.Paused)
+        {
+            session.Unpause();
+            missingSince = null;  // the end-of-game grace period starts again
+            Activity.Write($"Session {session.Id} resumed at {Fmt.Duration(session.Elapsed())}");
+        }
+        else
+        {
+            foreach (var ev in banners.Flush()) LogEvent(ev);
+            session.Pause();
+            DropCapture();
+            Activity.Write($"Session {session.Id} paused at {Fmt.Duration(session.Elapsed())}. Nothing is tracked until you resume it.");
+        }
+        log.Save(session);
+        nextAutosave = Clock.Mono + AutosaveS;
+        PushOverlay();
+        PublishStatus("");
+    }
+
     void ResumeNow(string id)
     {
         if (session?.Id == id) return;
@@ -648,7 +679,7 @@ sealed class Tracker : IDisposable
         else
         {
             var s = session;
-            text = $"Session {Fmt.Duration(s.Elapsed())} | {s.Items.Count} found";
+            text = $"Session {Fmt.Duration(s.Elapsed())}{(s.Paused ? " (paused)" : "")} | {s.Items.Count} found";
             if (s.Items.Count > 0)
             {
                 var last = s.Items[^1];
@@ -657,7 +688,9 @@ sealed class Tracker : IDisposable
             if (state.Length > 0) text += $" | {state}";
         }
         var recent = session?.Items.TakeLast(5).Reverse().Select(i => new RecentFind(TimeOf(i.FoundAt), i.Item, icons.PathFor(i.Item))).ToArray() ?? [];
-        Status = new TrackerStatus(text, session?.Id, holdNew, recent, session?.Items.Count ?? 0, session?.Prior ?? 0, session?.MonoStart ?? 0);
+        double timerAt = session is { Paused: true } p ? p.Elapsed() : session?.Prior ?? 0;
+        Status = new TrackerStatus(text, session?.Id, holdNew, recent, session?.Items.Count ?? 0, timerAt, session?.MonoStart ?? 0,
+            session?.Paused ?? false);
     }
 
     static string TimeOf(string foundAt)
@@ -693,7 +726,8 @@ sealed class Tracker : IDisposable
         }
         var rows = Tally(s.Items, cfg.OverlayItems)
             .Select(t => new OverlayRow(t.Name, TimeOf(t.FoundAt), icons.PathFor(t.Name), t.Count)).ToArray();
-        var next = new OverlayState(true, a, s.Prior, s.MonoStart, s.Items.Count > 0 ? s.Items[^1].T : null, rows);
+        var next = new OverlayState(true, a, s.Paused ? s.Elapsed() : s.Prior, s.MonoStart, s.Items.Count > 0 ? s.Items[^1].T : null,
+            rows, s.Paused);
         if (!next.Equals(Overlay)) Overlay = next;
     }
 }

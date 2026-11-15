@@ -24,7 +24,7 @@ sealed class Overlay : NativeWindow, IDisposable
     const double RollS = 0.26;     // a digit rolling over
     const double FindS = 1.2;      // the glow after a find
     const double AutoPinS = 1.5;   // the game hid the cursor this long: pin the panel where it is
-    const string SessionLabel = "SESSION", SinceLabel = "SINCE LAST ITEM", Hint = "DRAG TO MOVE · PIN TO LOCK";
+    const string SessionLabel = "SESSION", PausedLabel = "PAUSED", SinceLabel = "SINCE LAST ITEM", Hint = "DRAG TO MOVE · PIN TO LOCK";
 
     sealed class Row(string name)
     {
@@ -88,19 +88,20 @@ sealed class Overlay : NativeWindow, IDisposable
     readonly Spring panelW = new(0, 3.6, 0.82, 0.05), panelH = new(0, 3.6, 0.82, 0.05);
     readonly Spring sinceVis = new(0, 3.4, 1, 0.003), rowsVis = new(0, 3.4, 1, 0.003), countCol = new(0, 4, 1, 0.05);
     readonly Spring hover = new(0, 4.5, 1, 0.004), pinHover = new(0, 6, 0.75, 0.004), pinPress = new(0, 9, 0.6, 0.004);
+    readonly Spring resetHover = new(0, 6, 0.75, 0.004), resetPress = new(0, 9, 0.6, 0.004);
     readonly Spring pinTilt = new(0, 3.2, 0.38, 0.003);  // wobbles as it flips
     readonly Spring edit = new(0, 3.2, 1, 0.003);        // unpinned: glow, hint
     readonly Spring lift = new(0, 4.5, 0.65, 0.003);     // picked up while dragging
     readonly Spring posX = new(0, 8, 0.82, 0.05), posY = new(0, 8, 0.82, 0.05);
     readonly Spring[] springs;
-    double lastNow, nextRaise, findAt = -10, editAt;
+    double lastNow, nextRaise, findAt = -10, editAt, resetAt = -10;
     int seed;
     float rowsTop;
 
     // position and the mouse
     bool anchorRight, anchorBottom;
     int offX, offY;
-    bool pinned = true, dragging, settling, pinPressed, interactive, wantInteractive;
+    bool pinned = true, dragging, settling, pinPressed, resetPressed, interactive, wantInteractive;
     double grabX, grabY;
     double? hiddenSince;
     MouseInfo pointer;
@@ -135,7 +136,7 @@ sealed class Overlay : NativeWindow, IDisposable
         (margin, padX, padTop, padBottom) = (Px(30), Px(14), Px(9), Px(11));
         (labelH, timerH, sinceH, gapH, rowH, iconBox, footerH) = (Px(16), Px(38), Px(22), Px(12), Px(34), Px(30), Px(22));
         (radius, edgeGap, snapPx) = (Px(12), Px(16), Px(12));
-        springs = [appear, panelW, panelH, sinceVis, rowsVis, countCol, hover, pinHover, pinPress, pinTilt, edit, lift, posX, posY];
+        springs = [appear, panelW, panelH, sinceVis, rowsVis, countCol, hover, pinHover, pinPress, resetHover, resetPress, pinTilt, edit, lift, posX, posY];
         CreateHandle(new CreateParams
         {
             Caption = "Fort Item Tracker overlay",
@@ -339,7 +340,7 @@ sealed class Overlay : NativeWindow, IDisposable
         w = Math.Max(w, CharsWidth(time, timerFont));
         if (st.LastItemT != null) w = Math.Max(w, SpacedWidth(SinceLabel, labelFont) + P(8) + CharsWidth(time, sinceFont));
         foreach (var r in live) w = Math.Max(w, iconBox + P(8) + countCol.Target + P(10) + TextWidth(r.Text, rowFont));
-        if (!pinned) w = Math.Max(w, SpacedWidth(Hint, labelFont));
+        if (!pinned) w = Math.Max(w, Math.Max(SpacedWidth(Hint, labelFont), P(14) + SpacedWidth(SessionLabel, labelFont) + P(56)));
         panelW.Target = Math.Ceiling(w) + 2 * padX;
         panelH.Target = padTop + labelH + timerH + (st.LastItemT != null ? sinceH : 0)
             + (live.Count > 0 ? gapH + live.Count * rowH : 0) + (pinned ? 0 : footerH) + padBottom;
@@ -362,12 +363,18 @@ sealed class Overlay : NativeWindow, IDisposable
 
     PointF PinCenter(float w) => new(w - padX - P(5), padTop + labelH / 2f);
 
-    bool OverPin(int x, int y)
+    /// <summary>The reset-position button, left of the pin; only there while unpinned.</summary>
+    PointF ResetCenter(float w) => new(PinCenter(w).X - P(26), padTop + labelH / 2f);
+
+    bool OverPin(int x, int y) => Over(PinCenter((float)panelW.Value), x, y);
+
+    bool OverReset(int x, int y) => !pinned && Over(ResetCenter((float)panelW.Value), x, y);
+
+    bool Over(PointF c, int x, int y)
     {
         var (px, py) = PanelPos();
-        var c = PinCenter((float)panelW.Value);
         double dx = x - (px + c.X), dy = y - (py + c.Y);
-        return dx * dx + dy * dy <= P(13) * P(13);
+        return dx * dx + dy * dy <= P(12) * P(12);
     }
 
     // ---- the mouse ---------------------------------------------------------------------------------
@@ -381,6 +388,7 @@ sealed class Overlay : NativeWindow, IDisposable
         bool overPin = overPanel && OverPin(p.X, p.Y);
         hover.Target = overPanel || dragging ? 1 : 0;
         pinHover.Target = overPin || pinPressed ? 1 : 0;
+        resetHover.Target = (overPanel && OverReset(p.X, p.Y)) || resetPressed ? 1 : 0;
         if (dragging)
         {
             if (p.Down) DragTo(p.X, p.Y);
@@ -414,7 +422,7 @@ sealed class Overlay : NativeWindow, IDisposable
             case WM_SETCURSOR:
             {
                 var p = ReadPointer();
-                Cursor.Current = OverPin(p.X, p.Y) ? Cursors.Hand : pinned ? Cursors.Default : Cursors.SizeAll;
+                Cursor.Current = OverPin(p.X, p.Y) || OverReset(p.X, p.Y) ? Cursors.Hand : pinned ? Cursors.Default : Cursors.SizeAll;
                 m.Result = 1;
                 return;
             }
@@ -425,6 +433,12 @@ sealed class Overlay : NativeWindow, IDisposable
                 {
                     pinPressed = true;
                     pinPress.Target = 1;
+                    Native.SetCapture(Handle);
+                }
+                else if (OverReset(p.X, p.Y))
+                {
+                    resetPressed = true;
+                    resetPress.Target = 1;
                     Native.SetCapture(Handle);
                 }
                 else if (!pinned) BeginDrag(p.X, p.Y);
@@ -441,14 +455,21 @@ sealed class Overlay : NativeWindow, IDisposable
                     Native.ReleaseCapture();
                     if (OverPin(p.X, p.Y)) SetPinned(!pinned);
                 }
+                else if (resetPressed)
+                {
+                    resetPressed = false;
+                    resetPress.Target = 0;
+                    Native.ReleaseCapture();
+                    if (OverReset(p.X, p.Y)) ResetPosition();
+                }
                 else EndDrag();
                 Kick();
                 return;
             }
             case WM_CAPTURECHANGED when m.LParam != Handle:
                 EndDrag();
-                pinPressed = false;
-                pinPress.Target = 0;
+                pinPressed = resetPressed = false;
+                pinPress.Target = resetPress.Target = 0;
                 break;
         }
         base.WndProc(ref m);
@@ -506,12 +527,35 @@ sealed class Overlay : NativeWindow, IDisposable
         offY = (int)Math.Round(anchorBottom ? area.Bottom - (y + h) : y - area.Top);
         settling = true;
         if ((cfg.OverlayAnchor, cfg.OverlayX, cfg.OverlayY) == (Corner(), offX, offY)) return;  // a click, not a move
-        (cfg.OverlayAnchor, cfg.OverlayX, cfg.OverlayY) = (Corner(), offX, offY);
+        SavePosition(cfg, Corner(), offX, offY);
+    }
+
+    /// <summary>Glides the panel back to the default spot and saves it.</summary>
+    public void ResetPosition()
+    {
+        EndDrag();
+        var (px, py) = PanelPos();
+        posX.Snap(px);
+        posY.Snap(py);
+        (anchorRight, anchorBottom, offX, offY) = (false, false, DefaultOffset, DefaultOffset);
+        settling = true;
+        resetAt = Clock.Mono;
+        SavePosition(cfg, DefaultAnchor, offX, offY);
+        Activity.Write($"Overlay moved back to {DefaultOffset}, {DefaultOffset} px from the top left corner of the game");
+        Kick();
+    }
+
+    public const string DefaultAnchor = "top-left";
+    public const int DefaultOffset = 16;
+
+    public static void SavePosition(Config cfg, string anchor, int x, int y)
+    {
+        (cfg.OverlayAnchor, cfg.OverlayX, cfg.OverlayY) = (anchor, x, y);
         try
         {
-            Toml.SetValue(cfg.Path, "overlay", "anchor", $"\"{cfg.OverlayAnchor}\"");
-            Toml.SetValue(cfg.Path, "overlay", "x", offX.ToString(CultureInfo.InvariantCulture));
-            Toml.SetValue(cfg.Path, "overlay", "y", offY.ToString(CultureInfo.InvariantCulture));
+            Toml.SetValue(cfg.Path, "overlay", "anchor", $"\"{anchor}\"");
+            Toml.SetValue(cfg.Path, "overlay", "x", x.ToString(CultureInfo.InvariantCulture));
+            Toml.SetValue(cfg.Path, "overlay", "y", y.ToString(CultureInfo.InvariantCulture));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -659,7 +703,7 @@ sealed class Overlay : NativeWindow, IDisposable
         double tw = Ease.Since(now, findAt, 0.75);
         brush.Color = Theme.Gold;
         Theme.Sparkle(g, brush, padX + P(5), cy, P(5.5) * (float)(1 + 0.5 * Ease.Bump(tw)), (float)(90 * Ease.OutCubic(tw)));
-        DrawSpaced(g, SessionLabel, labelFont, Theme.Dim, padX + P(14), cy);
+        DrawSpaced(g, lastVisible?.Paused == true ? PausedLabel : SessionLabel, labelFont, Theme.Dim, padX + P(14), cy);
 
         float y = padTop + labelH + timerH;
         double sv = Ease.Clamp01(sinceVis.Value);
@@ -693,6 +737,7 @@ sealed class Overlay : NativeWindow, IDisposable
         using (var outline = Theme.RoundedRect(new RectangleF(0.5f, 0.5f, w - 1, h - 1), radius - 0.5f))
             g.DrawPath(pen, outline);
         DrawPin(g, w);
+        DrawReset(g, w, now);
         DrawSparkles(g, now, newest);
         g.Restore(saved);
     }
@@ -807,6 +852,38 @@ sealed class Overlay : NativeWindow, IDisposable
         g.FillPath(brush, pinHead);
         using (var needle = new Pen(color, 1.5f) { EndCap = LineCap.Triangle })
             g.DrawLine(needle, 8, 9.2f, 8, 15f);
+        g.Restore(saved);
+    }
+
+    /// <summary>A circular arrow; spins once when clicked.</summary>
+    void DrawReset(Graphics g, float w, double now)
+    {
+        double vis = Ease.Clamp01(edit.Value);
+        if (vis < 0.01) return;
+        var c = ResetCenter(w);
+        double rh = Ease.Clamp01(resetHover.Value), press = 1 - 0.14 * resetPress.Value;
+        float r = P(11) * (float)((0.7 + 0.3 * rh) * press);
+        brush.Color = Ease.Fade(Theme.Gold, (0.08 + 0.24 * rh) * vis);
+        g.FillEllipse(brush, c.X - r, c.Y - r, 2 * r, 2 * r);
+
+        var saved = g.Save();
+        float u = P(15) / 16f * (float)((0.75 + 0.25 * vis) * press);
+        g.TranslateTransform(c.X, c.Y);
+        g.RotateTransform((float)(360 * Ease.OutCubic(Ease.Since(now, resetAt, 0.7))));
+        g.ScaleTransform(u, u);
+        var color = Ease.Fade(Ease.Mix(Theme.Gold, Theme.Text, rh), vis);
+        using (var arc = new Pen(color, 1.6f) { StartCap = LineCap.Round })
+            g.DrawArc(arc, -5.5f, -5.5f, 11, 11, -60, 290);
+        brush.Color = color;  // arrowhead where the arc ends, pointing on round
+        double a = (-60 + 290) * Math.PI / 180;
+        float tx = (float)(5.5 * Math.Cos(a)), ty = (float)(5.5 * Math.Sin(a));
+        float fx = (float)-Math.Sin(a), fy = (float)Math.Cos(a);  // clockwise tangent
+        float nx = (float)Math.Cos(a), ny = (float)Math.Sin(a);   // outward
+        g.FillPolygon(brush, [
+            new PointF(tx + 3.2f * fx, ty + 3.2f * fy),
+            new PointF(tx + 2.6f * nx, ty + 2.6f * ny),
+            new PointF(tx - 2.6f * nx, ty - 2.6f * ny),
+        ]);
         g.Restore(saved);
     }
 
